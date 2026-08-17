@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>AI Pre-translate</title>
+    <link id="theme" rel="stylesheet" type="text/css" href="../../css/light.css">
+    <link rel="stylesheet" type="text/css" href="../../css/fonts.css">
+</head>
+
+<body class="dialogBody">
+    <div class="dialog-titlebar">
+        <span id="titleText">AI Pre-translate</span>
+    </div>
+    <div class="paddedArea">
+        <p id="introText" class="hint">Apply translation memory first, then fill remaining empty targets with AI.</p>
+        <table class="fill_width">
+            <tr>
+                <td class="noWrap">
+                    <label for="memorySelect" id="memoryLabel">Memory</label>
+                </td>
+                <td class="fill_width">
+                    <select id="memorySelect" class="table_select"></select>
+                </td>
+            </tr>
+            <tr>
+                <td class="middle noWrap">
+                    <label for="penalty" id="penaltyLabel">Penalization</label>
+                </td>
+                <td class="middle fill_width">
+                    <input id="penalty" style="width: 50px;">&nbsp;%
+                </td>
+            </tr>
+        </table>
+        <div class="row middle">
+            <input type="checkbox" id="applyTmFirst" checked>
+            <label for="applyTmFirst" id="applyTmFirstLabel">Apply translation memory first</label>
+        </div>
+        <div class="row middle">
+            <input type="checkbox" id="thenAiTranslate" checked>
+            <label for="thenAiTranslate" id="thenAiTranslateLabel">Then AI-translate remaining empty targets</label>
+        </div>
+        <div class="row middle">
+            <input type="checkbox" id="autoAcceptAi" checked>
+            <label for="autoAcceptAi" id="autoAcceptAiLabel">Automatically accept AI translations</label>
+        </div>
+        <div class="row middle">
+            <input type="checkbox" id="autoConfirmAi">
+            <label for="autoConfirmAi" id="autoConfirmAiLabel">Automatically confirm accepted translations</label>
+        </div>
+    </div>
+    <div class="buttonArea">
+        <button id="startButton">Start Pre-translate</button>
+    </div>
+    <script>
+        const { AiPreTranslate } = require('../../js/aiPreTranslate.js');
+        new AiPreTranslate();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>AI Autonomous Project Lifecycle</title>
+    <link id="theme" rel="stylesheet" type="text/css" href="../../css/light.css">
+    <link rel="stylesheet" type="text/css" href="../../css/fonts.css">
+</head>
+
+<body class="dialogBody" style="overflow: hidden;">
+    <div class="dialog-titlebar">
+        <span id="titleText">AI Autonomous Project Lifecycle</span>
+    </div>
+    <div class="lifecycle-layout">
+        <div class="lifecycle-steps" id="stepsPanel"></div>
+        <div class="lifecycle-main">
+            <p id="introText" class="hint"></p>
+            <table class="fill_width">
+                <tr>
+                    <td class="noWrap"><label for="nameInput" id="nameLabel">Name</label></td>
+                    <td class="fill_width"><input type="text" id="nameInput" class="table_input"></td>
+                </tr>
+                <tr>
+                    <td class="noWrap"><label for="srcLangSelect" id="srcLabel">Source Language</label></td>
+                    <td class="fill_width"><select id="srcLangSelect" class="fill_width"></select></td>
+                </tr>
+                <tr>
+                    <td class="noWrap"><label for="tgtLangSelect" id="tgtLabel">Target Language</label></td>
+                    <td class="fill_width"><select id="tgtLangSelect" class="fill_width"></select></td>
+                </tr>
+                <tr>
+                    <td class="noWrap"><label for="memorySelect" id="memoryLabel">Memory</label></td>
+                    <td class="fill_width"><select id="memorySelect" class="fill_width"></select></td>
+                </tr>
+                <tr>
+                    <td class="noWrap"><label for="glossarySelect" id="glossaryLabel">Glossary</label></td>
+                    <td class="fill_width"><select id="glossarySelect" class="fill_width"></select></td>
+                </tr>
+                <tr>
+                    <td class="noWrap"><label id="filesLabel">Source files</label></td>
+                    <td class="fill_width">
+                        <button id="selectFilesButton">Select source files</button>
+                        <span id="filesSummary" class="hint"></span>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="noWrap"><label for="exportFolder" id="exportLabel">Export folder</label></td>
+                    <td class="fill_width">
+                        <input type="text" id="exportFolder" class="table_input" style="width: calc(100% - 90px);">
+                        <button id="browseExportButton">Browse...</button>
+                    </td>
+                </tr>
+            </table>
+            <div class="row middle">
+                <input type="checkbox" id="openEditor" checked>
+                <label for="openEditor" id="openEditorLabel">Open translation editor (visible)</label>
+            </div>
+            <div class="row middle">
+                <input type="checkbox" id="runQa" checked>
+                <label for="runQa" id="runQaLabel">Run QA (tags and spaces)</label>
+            </div>
+            <div class="row middle">
+                <input type="checkbox" id="confirmAfter" checked>
+                <label for="confirmAfter" id="confirmAfterLabel">Confirm all translations after AI</label>
+            </div>
+            <div class="row middle">
+                <input type="checkbox" id="exportAfter" checked>
+                <label for="exportAfter" id="exportAfterLabel">Export translations when finished</label>
+            </div>
+            <label id="logLabel">Live log</label>
+            <div id="logArea" class="lifecycle-log"></div>
+        </div>
+    </div>
+    <div class="buttonArea">
+        <button id="cancelButton">Cancel</button>
+        <button id="startButton">Start Autonomous Run</button>
+    </div>
+    <script>
+        const { AiLifecycle } = require('../../js/aiLifecycle.js');
+        new AiLifecycle();
+    </script>
+</body>
+
+</html>

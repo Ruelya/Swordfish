@@ -92,6 +92,18 @@ export interface Preferences {
         fixTags: boolean;
         think: boolean;
     };
+    customAi: {
+        enabled: boolean;
+        name: string;
+        baseUrl: string;
+        apiKey: string;
+        model: string;
+        format: string;
+        requestTemplate: string;
+        responsePath: string;
+        extraHeaders: string;
+        fixTags: boolean;
+    };
     spellchecker: {
         defaultEnglish: string;
         defaultPortuguese: string;

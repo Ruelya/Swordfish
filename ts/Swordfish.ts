@@ -29,6 +29,8 @@ import { Project } from "./project.js";
 import { CommentReply, ReviewComment } from "./reviewComments.js";
 import { FullId } from "./segmentId.js";
 import { Rect, Sizes } from "./windowSizes.js";
+import { setAppLang, t } from "./i18n.js";
+import { CustomAITranslator, CustomAiConfig, defaultCustomAi } from "./customAITranslator.js";
 
 export class Swordfish {
 
@@ -58,6 +60,11 @@ export class Swordfish {
     static sortSegmentsWindow: BrowserWindow;
     static changeCaseWindow: BrowserWindow;
     static applyTmWindow: BrowserWindow;
+    static aiPreTranslateWindow: BrowserWindow;
+    static aiLifecycleWindow: BrowserWindow;
+    static lifecycleCancelled: boolean = false;
+    static preTranslateContext: any = {};
+    static lifecycleTypedFiles: any[] = [];
     static notesWindow: BrowserWindow;
     static contextWindow: BrowserWindow;
     static addNoteWindow: BrowserWindow;
@@ -89,7 +96,7 @@ export class Swordfish {
     static currentDefaults: Rectangle;
     static currentPreferences: Preferences = {
         theme: 'system',
-        appLang: 'en',
+        appLang: 'zh',
         zoomFactor: '1.0',
         srcLang: 'none',
         tgtLang: 'none',
@@ -169,6 +176,7 @@ export class Swordfish {
             srcLang: 'none',
             tgtLang: 'none'
         },
+        customAi: defaultCustomAi(),
         spellchecker: {
             defaultEnglish: 'en-US',
             defaultPortuguese: 'pt-BR',
@@ -256,7 +264,7 @@ export class Swordfish {
 
         app.on('ready', () => {
             Swordfish.createWindow();
-            let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'index.html');
+            let filePath: string = Swordfish.htmlPath('index.html');
             let fileUrl: URL = new URL('file://' + filePath);
             Swordfish.mainWindow.loadURL(fileUrl.href);
             Swordfish.mainWindow.on('resize', () => {
@@ -339,6 +347,58 @@ export class Swordfish {
         });
         ipcMain.on('set-height', (event: IpcMainEvent, arg: { window: string, width: number, height: number }) => {
             Swordfish.setHeight(arg);
+        });
+        ipcMain.on('get-app-lang', (event: IpcMainEvent) => {
+            event.returnValue = Swordfish.currentPreferences.appLang || 'zh';
+        });
+        ipcMain.on('get-titlebar-config', (event: IpcMainEvent) => {
+            event.returnValue = {
+                enabled: Swordfish.usesIntegratedTitleBar(),
+                icon: pathToFileURL(Swordfish.iconPath).href,
+                name: app.name
+            };
+        });
+        ipcMain.on('get-app-menu', (event: IpcMainEvent) => {
+            event.sender.send('set-app-menu', Swordfish.getTitleBarMenuItems());
+        });
+        ipcMain.on('popup-app-menu', (event: IpcMainEvent, arg: { index: number, x: number, y: number }) => {
+            Swordfish.popupAppMenu(arg);
+        });
+        ipcMain.on('show-ai-pretranslate', () => {
+            Swordfish.mainWindow.webContents.send('request-ai-pretranslate');
+        });
+        ipcMain.on('open-ai-pretranslate', (event: IpcMainEvent, arg: any) => {
+            Swordfish.showAiPreTranslate(arg);
+        });
+        ipcMain.on('close-ai-pretranslate', () => {
+            Swordfish.closeAiPreTranslate();
+        });
+        ipcMain.on('get-ai-pretranslate-context', (event: IpcMainEvent) => {
+            event.sender.send('set-ai-pretranslate-context', Swordfish.preTranslateContext || {});
+        });
+        ipcMain.on('run-ai-pretranslate', (event: IpcMainEvent, arg: any) => {
+            Swordfish.runAiPreTranslate(arg);
+        });
+        ipcMain.on('show-ai-lifecycle', () => {
+            Swordfish.showAiLifecycle();
+        });
+        ipcMain.on('close-ai-lifecycle', () => {
+            Swordfish.closeAiLifecycle();
+        });
+        ipcMain.on('cancel-ai-lifecycle', () => {
+            Swordfish.lifecycleCancelled = true;
+        });
+        ipcMain.on('run-ai-lifecycle', (event: IpcMainEvent, arg: any) => {
+            Swordfish.runAiLifecycle(arg);
+        });
+        ipcMain.on('lifecycle-select-files', (event: IpcMainEvent) => {
+            Swordfish.lifecycleSelectFiles(event);
+        });
+        ipcMain.on('lifecycle-browse-export', (event: IpcMainEvent) => {
+            Swordfish.lifecycleBrowseExport(event);
+        });
+        ipcMain.on('test-custom-ai', (event: IpcMainEvent, arg: any) => {
+            Swordfish.testCustomAi(event, arg);
         });
         ipcMain.on('close-serverSettings', () => {
             Swordfish.serverSettingsWindow.close();
@@ -1120,7 +1180,7 @@ export class Swordfish {
             let size: Size = screen.getPrimaryDisplay().workAreaSize;
             Swordfish.currentDefaults = { width: Math.round(size.width * 0.95), height: Math.round(size.height * 0.95), x: 0, y: 0 };
         }
-        this.mainWindow = new BrowserWindow({
+        let windowOptions: Electron.BrowserWindowConstructorOptions = {
             title: app.name,
             width: this.currentDefaults.width,
             height: this.currentDefaults.height,
@@ -1133,9 +1193,72 @@ export class Swordfish {
                 contextIsolation: false
             },
             show: false,
-            icon: this.iconPath
-        });
+            icon: this.iconPath,
+            backgroundColor: '#0F4C81'
+        };
+        if (process.platform === 'win32') {
+            // Merge the native Windows caption and menu bar into one themed strip.
+            windowOptions.titleBarStyle = 'hidden';
+            windowOptions.titleBarOverlay = Swordfish.getTitleBarOverlay();
+        }
+        this.mainWindow = new BrowserWindow(windowOptions);
         this.createMenu();
+        if (process.platform === 'win32') {
+            // Hide the native menu bar so File/Edit/... live in the custom title bar.
+            // Do not auto-hide: Alt must not resurrect the second chrome row.
+            this.mainWindow.setMenuBarVisibility(false);
+            this.mainWindow.setAutoHideMenuBar(false);
+        }
+    }
+
+    static usesIntegratedTitleBar(): boolean {
+        return process.platform === 'win32';
+    }
+
+    static getTitleBarOverlay(): Electron.TitleBarOverlay {
+        return {
+            color: '#0F4C81',
+            symbolColor: '#ffffff',
+            height: 36
+        };
+    }
+
+    static getTitleBarMenuItems(): { label: string }[] {
+        let menu: Menu | null = Menu.getApplicationMenu();
+        if (!menu) {
+            return [];
+        }
+        return menu.items.filter((item: MenuItem) => item.visible !== false && item.type !== 'separator').map((item: MenuItem) => {
+            return { label: item.label || '' };
+        });
+    }
+
+    static popupAppMenu(arg: { index: number, x: number, y: number }): void {
+        let menu: Menu | null = Menu.getApplicationMenu();
+        if (!menu) {
+            return;
+        }
+        let visible: MenuItem[] = menu.items.filter((item: MenuItem) => item.visible !== false && item.type !== 'separator');
+        let item: MenuItem | undefined = visible[arg.index];
+        if (!item || !item.submenu) {
+            return;
+        }
+        item.submenu.once('menu-will-close', () => {
+            if (Swordfish.mainWindow && !Swordfish.mainWindow.isDestroyed()) {
+                Swordfish.mainWindow.webContents.send('app-menu-closed');
+            }
+        });
+        item.submenu.popup({
+            window: Swordfish.mainWindow,
+            x: Math.round(arg.x),
+            y: Math.round(arg.y)
+        });
+    }
+
+    static notifyTitleBarMenu(): void {
+        if (Swordfish.mainWindow && !Swordfish.mainWindow.isDestroyed()) {
+            Swordfish.mainWindow.webContents.send('set-app-menu', Swordfish.getTitleBarMenuItems());
+        }
     }
 
     static createMenu(): void {
@@ -1155,7 +1278,7 @@ export class Swordfish {
                 menu.append(new MenuItem({ type: 'separator' }));
                 menu.append(
                     new MenuItem({
-                        label: 'Add to dictionary',
+                        label: t('addToDictionary'),
                         click: () => { this.mainWindow.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord); }
                     })
                 );
@@ -1163,50 +1286,50 @@ export class Swordfish {
             menu.popup();
         });
         let fileMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Open...', accelerator: 'CmdOrCtrl+O', click: () => { Swordfish.addFile(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'addFile.png') }
+            { label: t('open'), accelerator: 'CmdOrCtrl+O', click: () => { Swordfish.addFile(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'addFile.png') }
         ]);
         let tagsMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Insert Tag "1"', accelerator: 'CmdOrCtrl+1', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 1 }); } },
-            { label: 'Insert Tag "2"', accelerator: 'CmdOrCtrl+2', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 2 }); } },
-            { label: 'Insert Tag "3"', accelerator: 'CmdOrCtrl+3', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 3 }); } },
-            { label: 'Insert Tag "4"', accelerator: 'CmdOrCtrl+4', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 4 }); } },
-            { label: 'Insert Tag "5"', accelerator: 'CmdOrCtrl+5', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 5 }); } },
-            { label: 'Insert Tag "6"', accelerator: 'CmdOrCtrl+6', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 6 }); } },
-            { label: 'Insert Tag "7"', accelerator: 'CmdOrCtrl+7', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 7 }); } },
-            { label: 'Insert Tag "8"', accelerator: 'CmdOrCtrl+8', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 8 }); } },
-            { label: 'Insert Tag "9"', accelerator: 'CmdOrCtrl+9', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 9 }); } },
-            { label: 'Insert Tag "10"', accelerator: 'CmdOrCtrl+0', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 10 }); } }
+            { label: t('insertTagN', 1), accelerator: 'CmdOrCtrl+1', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 1 }); } },
+            { label: t('insertTagN', 2), accelerator: 'CmdOrCtrl+2', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 2 }); } },
+            { label: t('insertTagN', 3), accelerator: 'CmdOrCtrl+3', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 3 }); } },
+            { label: t('insertTagN', 4), accelerator: 'CmdOrCtrl+4', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 4 }); } },
+            { label: t('insertTagN', 5), accelerator: 'CmdOrCtrl+5', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 5 }); } },
+            { label: t('insertTagN', 6), accelerator: 'CmdOrCtrl+6', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 6 }); } },
+            { label: t('insertTagN', 7), accelerator: 'CmdOrCtrl+7', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 7 }); } },
+            { label: t('insertTagN', 8), accelerator: 'CmdOrCtrl+8', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 8 }); } },
+            { label: t('insertTagN', 9), accelerator: 'CmdOrCtrl+9', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 9 }); } },
+            { label: t('insertTagN', 10), accelerator: 'CmdOrCtrl+0', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', { tag: 10 }); } }
         ]);
         let editMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => { Swordfish.undo() } },
+            { label: t('undo'), accelerator: 'CmdOrCtrl+Z', click: () => { Swordfish.undo() } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Cut', accelerator: 'CmdOrCtrl+X', click: () => { Swordfish.cut() } },
-            { label: 'Copy', accelerator: 'CmdOrCtrl+C', click: () => { Swordfish.copy(); } },
-            { label: 'Paste', accelerator: 'CmdOrCtrl+V', click: () => { Swordfish.paste() } },
-            { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => { Swordfish.selectAll(); } },
+            { label: t('cut'), accelerator: 'CmdOrCtrl+X', click: () => { Swordfish.cut() } },
+            { label: t('copy'), accelerator: 'CmdOrCtrl+C', click: () => { Swordfish.copy(); } },
+            { label: t('paste'), accelerator: 'CmdOrCtrl+V', click: () => { Swordfish.paste() } },
+            { label: t('selectAll'), accelerator: 'CmdOrCtrl+A', click: () => { Swordfish.selectAll(); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Edit Previous Segment', accelerator: 'PageUp', click: () => { Swordfish.mainWindow.webContents.send('previous-segment'); } },
-            { label: 'Edit Next Segment', accelerator: 'PageDown', click: () => { Swordfish.mainWindow.webContents.send('next-segment'); } },
-            { label: 'Go To Segment...', accelerator: 'CmdOrCtrl+G', click: () => { Swordfish.mainWindow.webContents.send('go-to'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'goTo.png') },
-            { label: 'Go To Next Segment With Same Source ', accelerator: 'CmdOrCtrl+Shift+G', click: () => { Swordfish.mainWindow.webContents.send('next-same-source'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'goToSource.png') },
+            { label: t('editPreviousSegment'), accelerator: 'PageUp', click: () => { Swordfish.mainWindow.webContents.send('previous-segment'); } },
+            { label: t('editNextSegment'), accelerator: 'PageDown', click: () => { Swordfish.mainWindow.webContents.send('next-segment'); } },
+            { label: t('goToSegment'), accelerator: 'CmdOrCtrl+G', click: () => { Swordfish.mainWindow.webContents.send('go-to'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'goTo.png') },
+            { label: t('goToNextSameSource'), accelerator: 'CmdOrCtrl+Shift+G', click: () => { Swordfish.mainWindow.webContents.send('next-same-source'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'goToSource.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Edit Source Text', accelerator: 'Alt+F2', click: () => { Swordfish.mainWindow.webContents.send('edit-source'); } },
+            { label: t('editSourceText'), accelerator: 'Alt+F2', click: () => { Swordfish.mainWindow.webContents.send('edit-source'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Edit Next Untranslated Segment', accelerator: 'CmdOrCtrl+U', click: () => { Swordfish.mainWindow.webContents.send('next-untranslated'); } },
-            { label: 'Edit Next Unconfirmed Segment', accelerator: 'CmdOrCtrl+Shift+U', click: () => { Swordfish.mainWindow.webContents.send('next-unconfirmed'); } },
-            { label: 'Edit Next Unconfirmed/Untranslated Segment', accelerator: 'CmdOrCtrl+Alt+U', click: () => { Swordfish.mainWindow.webContents.send('next-needs-action'); } },
+            { label: t('editNextUntranslated'), accelerator: 'CmdOrCtrl+U', click: () => { Swordfish.mainWindow.webContents.send('next-untranslated'); } },
+            { label: t('editNextUnconfirmed'), accelerator: 'CmdOrCtrl+Shift+U', click: () => { Swordfish.mainWindow.webContents.send('next-unconfirmed'); } },
+            { label: t('editNextNeedsAction'), accelerator: 'CmdOrCtrl+Alt+U', click: () => { Swordfish.mainWindow.webContents.send('next-needs-action'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Save Segment Changes', accelerator: 'Alt+Enter', click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: false, next: 'none' }); }, icon: join(app.getAppPath(), 'images', iconFolder, 'saveChanges.png') },
-            { label: 'Discard Segment Changes', accelerator: 'Esc', click: () => { Swordfish.mainWindow.webContents.send('cancel-edit'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'cancelEdit.png') },
+            { label: t('saveSegmentChanges'), accelerator: 'Alt+Enter', click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: false, next: 'none' }); }, icon: join(app.getAppPath(), 'images', iconFolder, 'saveChanges.png') },
+            { label: t('discardSegmentChanges'), accelerator: 'Esc', click: () => { Swordfish.mainWindow.webContents.send('cancel-edit'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'cancelEdit.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Change Case', accelerator: 'CmdOrCtrl+Alt+C', click: () => { Swordfish.mainWindow.webContents.send('change-case'); } },
-            { label: 'Replace Text', accelerator: 'CmdOrCtrl+Alt+F', click: () => { Swordfish.mainWindow.webContents.send('replace-text'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'replaceText.png') },
+            { label: t('changeCase'), accelerator: 'CmdOrCtrl+Alt+C', click: () => { Swordfish.mainWindow.webContents.send('change-case'); } },
+            { label: t('replaceText'), accelerator: 'CmdOrCtrl+Alt+F', click: () => { Swordfish.mainWindow.webContents.send('replace-text'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'replaceText.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Insert Tag', accelerator: 'CmdOrCtrl+T', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', {}); } },
-            new MenuItem({ label: 'Insert Tags...', submenu: tagsMenu }),
-            { label: 'Insert Next Tag', accelerator: 'CmdOrCtrl+Shift+T', click: () => { Swordfish.mainWindow.webContents.send('insert-next-tag'); } },
-            { label: 'Insert Remaining Tags', accelerator: 'CmdOrCtrl+Alt+T', click: () => { Swordfish.mainWindow.webContents.send('insert-remaining-tags'); } },
-            { label: 'Remove All Tags', accelerator: 'CmdOrCtrl+Alt+Shift+R', click: () => { Swordfish.mainWindow.webContents.send('remove-tags'); } },
+            { label: t('insertTag'), accelerator: 'CmdOrCtrl+T', click: () => { Swordfish.mainWindow.webContents.send('insert-tag', {}); } },
+            new MenuItem({ label: t('insertTags'), submenu: tagsMenu }),
+            { label: t('insertNextTag'), accelerator: 'CmdOrCtrl+Shift+T', click: () => { Swordfish.mainWindow.webContents.send('insert-next-tag'); } },
+            { label: t('insertRemainingTags'), accelerator: 'CmdOrCtrl+Alt+T', click: () => { Swordfish.mainWindow.webContents.send('insert-remaining-tags'); } },
+            { label: t('removeAllTags'), accelerator: 'CmdOrCtrl+Alt+Shift+R', click: () => { Swordfish.mainWindow.webContents.send('remove-tags'); } },
         ]);
         let nextMT: string = 'Alt+Right';
         let previousMT: string = 'Alt+Left';
@@ -1215,97 +1338,100 @@ export class Swordfish {
             previousMT = 'Ctrl+Alt+Left';
         }
         let viewMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Projects', accelerator: 'F6', click: () => { Swordfish.viewProjects(); } },
-            { label: 'Memories', accelerator: 'F7', click: () => { Swordfish.viewMemories(); } },
-            { label: 'Glossaries', accelerator: 'F8', click: () => { Swordfish.viewGlossaries(); } },
+            { label: t('projects'), accelerator: 'F6', click: () => { Swordfish.viewProjects(); } },
+            { label: t('memories'), accelerator: 'F7', click: () => { Swordfish.viewMemories(); } },
+            { label: t('glossaries'), accelerator: 'F8', click: () => { Swordfish.viewGlossaries(); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Sort Segments', accelerator: 'F3', click: () => { Swordfish.mainWindow.webContents.send('sort-segments'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'sort.png') },
-            { label: 'Filter Segments', accelerator: 'CmdOrCtrl+F', click: () => { Swordfish.mainWindow.webContents.send('filter-segments'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'filter.png') },
+            { label: t('sortSegments'), accelerator: 'F3', click: () => { Swordfish.mainWindow.webContents.send('sort-segments'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'sort.png') },
+            { label: t('filterSegments'), accelerator: 'CmdOrCtrl+F', click: () => { Swordfish.mainWindow.webContents.send('filter-segments'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'filter.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Expand/Collapse Files Panel', accelerator: 'CmdOrCtrl+Shift+F', click: () => { Swordfish.toggleFilesPanel(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'expand.png') },
-            { label: 'Expand/Collapse Right Panels', accelerator: 'CmdOrCtrl+Shift+J', click: () => { Swordfish.toggleRightPanels(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'collapse.png') },
+            { label: t('expandCollapseFiles'), accelerator: 'CmdOrCtrl+Shift+F', click: () => { Swordfish.toggleFilesPanel(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'expand.png') },
+            { label: t('expandCollapseRight'), accelerator: 'CmdOrCtrl+Shift+J', click: () => { Swordfish.toggleRightPanels(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'collapse.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Show/Hide Notes', accelerator: 'F2', click: () => { Swordfish.toggleNotes(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'notes.png') },
-            { label: 'Show/Hide Review Comments', accelerator: 'Alt+F6', click: () => { Swordfish.toggleReviewComments(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'SVG_EDIT_COMMENT.png') },
-            { label: 'Show/Hide Context', accelerator: 'Alt+F3', click: () => { Swordfish.toggleContext(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'contextInfo.png') },
+            { label: t('showHideNotes'), accelerator: 'F2', click: () => { Swordfish.toggleNotes(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'notes.png') },
+            { label: t('showHideReviewComments'), accelerator: 'Alt+F6', click: () => { Swordfish.toggleReviewComments(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'SVG_EDIT_COMMENT.png') },
+            { label: t('showHideContext'), accelerator: 'Alt+F3', click: () => { Swordfish.toggleContext(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'contextInfo.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Close Selected Tab', accelerator: 'CmdOrCtrl+W', click: () => { Swordfish.closeSelectedTab(); } },
+            { label: t('closeSelectedTab'), accelerator: 'CmdOrCtrl+W', click: () => { Swordfish.closeSelectedTab(); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'First Page', accelerator: 'CmdOrCtrl+Shift+PageUp', click: () => { Swordfish.mainWindow.webContents.send('first-page'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'firstPage.png') },
-            { label: 'Previous Page', accelerator: 'CmdOrCtrl+PageUp', click: () => { Swordfish.mainWindow.webContents.send('previous-page'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'previousPage.png') },
-            { label: 'Next Page', accelerator: 'CmdOrCtrl+PageDown', click: () => { Swordfish.mainWindow.webContents.send('next-page'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'nextPage.png') },
-            { label: 'Last Page', accelerator: 'CmdOrCtrl+Shift+PageDown', click: () => { Swordfish.mainWindow.webContents.send('last-page'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'lastPage.png') },
+            { label: t('firstPage'), accelerator: 'CmdOrCtrl+Shift+PageUp', click: () => { Swordfish.mainWindow.webContents.send('first-page'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'firstPage.png') },
+            { label: t('previousPage'), accelerator: 'CmdOrCtrl+PageUp', click: () => { Swordfish.mainWindow.webContents.send('previous-page'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'previousPage.png') },
+            { label: t('nextPage'), accelerator: 'CmdOrCtrl+PageDown', click: () => { Swordfish.mainWindow.webContents.send('next-page'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'nextPage.png') },
+            { label: t('lastPage'), accelerator: 'CmdOrCtrl+Shift+PageDown', click: () => { Swordfish.mainWindow.webContents.send('last-page'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'lastPage.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Next Translation Memory Match', accelerator: 'CmdOrCtrl+Alt+Right', click: () => { Swordfish.mainWindow.webContents.send('next-match'); } },
-            { label: 'Previous Translation Memory Match', accelerator: 'CmdOrCtrl+Alt+Left', click: () => { Swordfish.mainWindow.webContents.send('previous-match'); } },
+            { label: t('nextTmMatch'), accelerator: 'CmdOrCtrl+Alt+Right', click: () => { Swordfish.mainWindow.webContents.send('next-match'); } },
+            { label: t('previousTmMatch'), accelerator: 'CmdOrCtrl+Alt+Left', click: () => { Swordfish.mainWindow.webContents.send('previous-match'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Next Machine Translation', accelerator: nextMT, click: () => { Swordfish.mainWindow.webContents.send('next-mt'); } },
-            { label: 'Previous Machine Translation', accelerator: previousMT, click: () => { Swordfish.mainWindow.webContents.send('previous-mt'); } },
+            { label: t('nextMt'), accelerator: nextMT, click: () => { Swordfish.mainWindow.webContents.send('next-mt'); } },
+            { label: t('previousMt'), accelerator: previousMT, click: () => { Swordfish.mainWindow.webContents.send('previous-mt'); } },
             new MenuItem({ type: 'separator' }),
-            new MenuItem({ label: 'Toggle Full Screen', role: 'togglefullscreen' })
+            new MenuItem({ label: t('toggleFullScreen'), role: 'togglefullscreen' })
         ]);
         if (!app.isPackaged) {
-            viewMenu.append(new MenuItem({ label: 'Open Development Tools', accelerator: 'F12', click: () => { BrowserWindow.getFocusedWindow()?.webContents.openDevTools(); } }));
+            viewMenu.append(new MenuItem({ label: t('openDevTools'), accelerator: 'F12', click: () => { BrowserWindow.getFocusedWindow()?.webContents.openDevTools(); } }));
         }
         let projectsMenu: Menu = Menu.buildFromTemplate([
-            { label: 'New Project', accelerator: 'CmdOrCtrl+N', click: () => { Swordfish.showAddProject(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'add.png') },
-            { label: 'Edit Project', click: () => { Swordfish.editProject(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'edit.png') },
-            { label: 'Translate Projects', click: () => { Swordfish.translateProjects(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'translate.png') },
-            { label: 'Export Translations/Reviews', accelerator: 'CmdOrCtrl+Alt+S', click: () => { Swordfish.mainWindow.webContents.send('export-translations'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'exportTranslations.png') },
-            { label: 'Export Translations as TMX File', click: () => { Swordfish.mainWindow.webContents.send('export-translations-tmx'); } },
+            { label: t('newProject'), accelerator: 'CmdOrCtrl+N', click: () => { Swordfish.showAddProject(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'add.png') },
+            { label: t('editProject'), click: () => { Swordfish.editProject(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'edit.png') },
+            { label: t('translateProjects'), click: () => { Swordfish.translateProjects(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'translate.png') },
+            { label: t('exportTranslations'), accelerator: 'CmdOrCtrl+Alt+S', click: () => { Swordfish.mainWindow.webContents.send('export-translations'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'exportTranslations.png') },
+            { label: t('exportTranslationsTmx'), click: () => { Swordfish.mainWindow.webContents.send('export-translations-tmx'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Export XLIFF File for Review', click: () => { Swordfish.mainWindow.webContents.send('export-xliff-review'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'exportXLIFF.png') },
-            { label: 'Import Reviewed XLIFF File', click: () => { Swordfish.importReviewedXLIFF() }, icon: join(app.getAppPath(), 'images', iconFolder, 'importXLIFF.png') },
+            { label: t('exportXliffReview'), click: () => { Swordfish.mainWindow.webContents.send('export-xliff-review'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'exportXLIFF.png') },
+            { label: t('importReviewedXliff'), click: () => { Swordfish.importReviewedXLIFF() }, icon: join(app.getAppPath(), 'images', iconFolder, 'importXLIFF.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Export All Memory Matches as TMX', click: () => { Swordfish.mainWindow.webContents.send('export-matches'); } },
-            { label: 'Export All Recognized Terms as TBX', click: () => { Swordfish.mainWindow.webContents.send('export-terminology-all'); } },
+            { label: t('exportAllMemoryMatches'), click: () => { Swordfish.mainWindow.webContents.send('export-matches'); } },
+            { label: t('exportAllTerms'), click: () => { Swordfish.mainWindow.webContents.send('export-terminology-all'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Remove Projects', click: () => { Swordfish.mainWindow.webContents.send('remove-projects'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remove.png') },
+            { label: t('removeProjects'), click: () => { Swordfish.mainWindow.webContents.send('remove-projects'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remove.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Project Statistics', click: () => { Swordfish.mainWindow.webContents.send('request-statistics'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'statistics.png') },
-            { label: 'Export HTML', accelerator: 'F5', click: () => { Swordfish.mainWindow.webContents.send('export-html'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'exportHTML.png') },
+            { label: t('projectStatistics'), click: () => { Swordfish.mainWindow.webContents.send('request-statistics'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'statistics.png') },
+            { label: t('exportHtml'), accelerator: 'F5', click: () => { Swordfish.mainWindow.webContents.send('export-html'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'exportHTML.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Import Project', click: () => { Swordfish.showImportXliff(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'import.png') },
-            { label: 'Export Project', click: () => { Swordfish.mainWindow.webContents.send('export-project'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'export.png') }
+            { label: t('importProject'), click: () => { Swordfish.showImportXliff(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'import.png') },
+            { label: t('exportProject'), click: () => { Swordfish.mainWindow.webContents.send('export-project'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'export.png') }
         ]);
         let memoriesMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Add Memory', click: () => { Swordfish.showAddMemory(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'add.png') },
-            { label: 'Remove Memory', click: () => { Swordfish.mainWindow.webContents.send('remove-memory'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remove.png') },
+            { label: t('addMemory'), click: () => { Swordfish.showAddMemory(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'add.png') },
+            { label: t('removeMemory'), click: () => { Swordfish.mainWindow.webContents.send('remove-memory'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remove.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Add RemoteTM Memory', click: () => { Swordfish.showServerSettings('memory'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remoteTM.png') },
+            { label: t('addRemoteTmMemory'), click: () => { Swordfish.showServerSettings('memory'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remoteTM.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Import TMX File', click: () => { Swordfish.mainWindow.webContents.send('import-tmx'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'import.png') },
-            { label: 'Export Memory as TMX File', click: () => { Swordfish.mainWindow.webContents.send('export-tmx'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'export.png') },
+            { label: t('importTmx'), click: () => { Swordfish.mainWindow.webContents.send('import-tmx'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'import.png') },
+            { label: t('exportMemoryTmx'), click: () => { Swordfish.mainWindow.webContents.send('export-tmx'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'export.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Import SDLTM File', click: () => { Swordfish.mainWindow.webContents.send('import-sdltm'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'importSDLTM.png') },
+            { label: t('importSdltm'), click: () => { Swordfish.mainWindow.webContents.send('import-sdltm'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'importSDLTM.png') },
         ]);
         let glossariesMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Add Glossary', click: () => { Swordfish.showAddGlossary(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'add.png') },
-            { label: 'Remove Glossary', click: () => { Swordfish.removeGlossary(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remove.png') },
+            { label: t('addGlossary'), click: () => { Swordfish.showAddGlossary(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'add.png') },
+            { label: t('removeGlossary'), click: () => { Swordfish.removeGlossary(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remove.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Add RemoteTM Glossary', click: () => { Swordfish.showServerSettings('glossary'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remoteTM.png') },
+            { label: t('addRemoteTmGlossary'), click: () => { Swordfish.showServerSettings('glossary'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'remoteTM.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Import Glossary', click: () => { Swordfish.mainWindow.webContents.send('import-glossary'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'import.png') },
-            { label: 'Export Glossary', click: () => { Swordfish.mainWindow.webContents.send('export-glossary'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'export.png') }
+            { label: t('importGlossary'), click: () => { Swordfish.mainWindow.webContents.send('import-glossary'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'import.png') },
+            { label: t('exportGlossary'), click: () => { Swordfish.mainWindow.webContents.send('export-glossary'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'export.png') }
         ]);
         let aiMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Fix Tags with AI', accelerator: 'CmdOrCtrl+Shift+Alt+T', click: () => { Swordfish.mainWindow.webContents.send('fix-tags'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'fixTags.png') },
-            { label: 'Fix TM Match with AI', accelerator: 'CmdOrCtrl+Shift+M', click: () => { Swordfish.mainWindow.webContents.send('fix-selected-match'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'fixMatch.png') },
+            { label: t('fixTagsWithAi'), accelerator: 'CmdOrCtrl+Shift+Alt+T', click: () => { Swordfish.mainWindow.webContents.send('fix-tags'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'fixTags.png') },
+            { label: t('fixTmMatchWithAi'), accelerator: 'CmdOrCtrl+Shift+M', click: () => { Swordfish.mainWindow.webContents.send('fix-selected-match'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'fixMatch.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Open AI Prompt Dialog', accelerator: 'CmdOrCtrl+Shift+P', click: () => { Swordfish.mainWindow.webContents.send('open-ai-prompt'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'prompt.png') },
-            { label: 'Copy AI Prompt to Clipboard', accelerator: 'CmdOrCtrl+Shift+C', click: () => { Swordfish.mainWindow.webContents.send('copy-ai-prompt'); } },
+            { label: t('openAiPrompt'), accelerator: 'CmdOrCtrl+Shift+P', click: () => { Swordfish.mainWindow.webContents.send('open-ai-prompt'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'prompt.png') },
+            { label: t('copyAiPrompt'), accelerator: 'CmdOrCtrl+Shift+C', click: () => { Swordfish.mainWindow.webContents.send('copy-ai-prompt'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Insert AI Response in Segment', accelerator: 'CmdOrCtrl+Shift+R', click: () => { Swordfish.insertAiResponse(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'insertAIResponse.png') }
+            { label: t('insertAiResponse'), accelerator: 'CmdOrCtrl+Shift+R', click: () => { Swordfish.insertAiResponse(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'insertAIResponse.png') },
+            new MenuItem({ type: 'separator' }),
+            { label: t('aiPreTranslate'), accelerator: 'CmdOrCtrl+Shift+A', click: () => { Swordfish.mainWindow.webContents.send('request-ai-pretranslate'); } },
+            { label: t('aiLifecycle'), accelerator: 'CmdOrCtrl+Shift+L', click: () => { Swordfish.showAiLifecycle(); } }
         ]);
         let helpMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Swordfish User Guide', accelerator: 'F1', click: () => { this.showHelp(); } },
-            { label: 'Getting Started Guide', click: () => { Swordfish.showGettingStarted(); } },
+            { label: t('userGuide'), accelerator: 'F1', click: () => { this.showHelp(); } },
+            { label: t('gettingStarted'), click: () => { Swordfish.showGettingStarted(); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Check for Updates...', click: () => { this.checkUpdates(false); } },
-            { label: 'View Licenses', click: () => { this.showLicenses({ from: 'menu' }); } },
+            { label: t('checkUpdates'), click: () => { this.checkUpdates(false); } },
+            { label: t('viewLicenses'), click: () => { this.showLicenses({ from: 'menu' }); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Release History', click: () => { Swordfish.showReleaseHistory(); } },
-            { label: 'Support Group', click: () => { this.showSupportGroup(); } }
+            { label: t('releaseHistory'), click: () => { Swordfish.showReleaseHistory(); } },
+            { label: t('supportGroup'), click: () => { this.showSupportGroup(); } }
         ]);
         let nextUntranslatedKey: string = 'Alt+Down';
         let nextUnconfirmedKey: string = 'Alt+Shift+Down';
@@ -1314,131 +1440,136 @@ export class Swordfish {
             nextUnconfirmedKey = 'Ctrl+Shift+Down';
         }
         let insrtTermsMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Insert  Term "1"', accelerator: 'CmdOrCtrl+Alt+1', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 1 }); } },
-            { label: 'Insert  Term "2"', accelerator: 'CmdOrCtrl+Alt+2', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 2 }); } },
-            { label: 'Insert  Term "3"', accelerator: 'CmdOrCtrl+Alt+3', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 3 }); } },
-            { label: 'Insert  Term "4"', accelerator: 'CmdOrCtrl+Alt+4', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 4 }); } },
-            { label: 'Insert  Term "5"', accelerator: 'CmdOrCtrl+Alt+5', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 5 }); } },
-            { label: 'Insert  Term "6"', accelerator: 'CmdOrCtrl+Alt+6', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 6 }); } },
-            { label: 'Insert  Term "7"', accelerator: 'CmdOrCtrl+Alt+7', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 7 }); } },
-            { label: 'Insert  Term "8"', accelerator: 'CmdOrCtrl+Alt+8', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 8 }); } },
-            { label: 'Insert  Term "9"', accelerator: 'CmdOrCtrl+Alt+9', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 9 }); } },
-            { label: 'Insert  Term "10"', accelerator: 'CmdOrCtrl+Alt+0', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 10 }); } }
+            { label: t('insertTermN', 1), accelerator: 'CmdOrCtrl+Alt+1', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 1 }); } },
+            { label: t('insertTermN', 2), accelerator: 'CmdOrCtrl+Alt+2', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 2 }); } },
+            { label: t('insertTermN', 3), accelerator: 'CmdOrCtrl+Alt+3', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 3 }); } },
+            { label: t('insertTermN', 4), accelerator: 'CmdOrCtrl+Alt+4', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 4 }); } },
+            { label: t('insertTermN', 5), accelerator: 'CmdOrCtrl+Alt+5', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 5 }); } },
+            { label: t('insertTermN', 6), accelerator: 'CmdOrCtrl+Alt+6', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 6 }); } },
+            { label: t('insertTermN', 7), accelerator: 'CmdOrCtrl+Alt+7', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 7 }); } },
+            { label: t('insertTermN', 8), accelerator: 'CmdOrCtrl+Alt+8', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 8 }); } },
+            { label: t('insertTermN', 9), accelerator: 'CmdOrCtrl+Alt+9', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 9 }); } },
+            { label: t('insertTermN', 10), accelerator: 'CmdOrCtrl+Alt+0', click: () => { Swordfish.mainWindow.webContents.send('insert-tem', { term: 10 }); } }
         ]);
         let tasksMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Confirm Translation', accelerator: 'CmdOrCtrl+E', click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: true, next: 'none' }); }, icon: join(app.getAppPath(), 'images', iconFolder, 'SVG_FINAL.png') },
-            { label: 'Unconfirm Translation', accelerator: 'CmdOrCtrl+Shift+E', click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: false, next: 'none', unconfirm: true }); } },
-            { label: 'Confirm and go to Next Untranslated', accelerator: nextUntranslatedKey, click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: true, next: 'untranslated' }); }, icon: join(app.getAppPath(), 'images', iconFolder, 'SVG_UNTRANSLATED.png') },
-            { label: 'Confirm and go to Next Unconfirmed', accelerator: nextUnconfirmedKey, click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: true, next: 'unconfirmed' }); }, icon: join(app.getAppPath(), 'images', iconFolder, 'SVG_TRANSLATED.png') },
+            { label: t('confirmTranslation'), accelerator: 'CmdOrCtrl+E', click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: true, next: 'none' }); }, icon: join(app.getAppPath(), 'images', iconFolder, 'SVG_FINAL.png') },
+            { label: t('unconfirmTranslation'), accelerator: 'CmdOrCtrl+Shift+E', click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: false, next: 'none', unconfirm: true }); } },
+            { label: t('confirmNextUntranslated'), accelerator: nextUntranslatedKey, click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: true, next: 'untranslated' }); }, icon: join(app.getAppPath(), 'images', iconFolder, 'SVG_UNTRANSLATED.png') },
+            { label: t('confirmNextUnconfirmed'), accelerator: nextUnconfirmedKey, click: () => { Swordfish.mainWindow.webContents.send('save-edit', { confirm: true, next: 'unconfirmed' }); }, icon: join(app.getAppPath(), 'images', iconFolder, 'SVG_TRANSLATED.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Confirm All Translations', click: () => { Swordfish.mainWindow.webContents.send('confirm-all'); } },
-            { label: 'Unconfirm All Translations', click: () => { Swordfish.mainWindow.webContents.send('unconfirm-all'); } },
-            { label: 'Remove All Translations', click: () => { Swordfish.mainWindow.webContents.send('remove-all'); } },
+            { label: t('confirmAll'), click: () => { Swordfish.mainWindow.webContents.send('confirm-all'); } },
+            { label: t('unconfirmAll'), click: () => { Swordfish.mainWindow.webContents.send('unconfirm-all'); } },
+            { label: t('removeAllTranslations'), click: () => { Swordfish.mainWindow.webContents.send('remove-all'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Concordance Search', accelerator: 'CmdOrCtrl+Y', click: () => { Swordfish.mainWindow.webContents.send('concordance-requested'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'concordance.png') },
+            { label: t('concordanceSearch'), accelerator: 'CmdOrCtrl+Y', click: () => { Swordfish.mainWindow.webContents.send('concordance-requested'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'concordance.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Lock/Unlock Segment', accelerator: 'F4', click: () => { Swordfish.mainWindow.webContents.send('toggle-lock'); } },
-            { label: 'Lock Repeated Segments', click: () => { Swordfish.mainWindow.webContents.send('lock-repeated'); } },
-            { label: 'Unlock All Segments', click: () => { Swordfish.mainWindow.webContents.send('unlock-segments'); } },
+            { label: t('lockUnlockSegment'), accelerator: 'F4', click: () => { Swordfish.mainWindow.webContents.send('toggle-lock'); } },
+            { label: t('lockRepeated'), click: () => { Swordfish.mainWindow.webContents.send('lock-repeated'); } },
+            { label: t('unlockAll'), click: () => { Swordfish.mainWindow.webContents.send('unlock-segments'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Split Segment', accelerator: 'CmdOrCtrl+H', click: () => { Swordfish.mainWindow.webContents.send('split-segment'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'split.png') },
-            { label: 'Merge With Next Segment', accelerator: 'CmdOrCtrl+J', click: () => { Swordfish.mainWindow.webContents.send('merge-next'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'merge.png') },
+            { label: t('splitSegment'), accelerator: 'CmdOrCtrl+H', click: () => { Swordfish.mainWindow.webContents.send('split-segment'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'split.png') },
+            { label: t('mergeNext'), accelerator: 'CmdOrCtrl+J', click: () => { Swordfish.mainWindow.webContents.send('merge-next'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'merge.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Copy Source to Target', accelerator: 'CmdOrCtrl+P', click: () => { Swordfish.mainWindow.webContents.send('copy-source'); } },
-            { label: 'Copy Sources to All Empty Targets', accelerator: 'CmdOrCtrl+Alt+P', click: () => { Swordfish.mainWindow.webContents.send('copy-all-sources'); } },
-            { label: 'Pseudo-translate Untranslated Segments', click: () => { Swordfish.mainWindow.webContents.send('pseudo-translate'); } },
+            { label: t('copySourceToTarget'), accelerator: 'CmdOrCtrl+P', click: () => { Swordfish.mainWindow.webContents.send('copy-source'); } },
+            { label: t('copyAllSources'), accelerator: 'CmdOrCtrl+Alt+P', click: () => { Swordfish.mainWindow.webContents.send('copy-all-sources'); } },
+            { label: t('pseudoTranslate'), click: () => { Swordfish.mainWindow.webContents.send('pseudo-translate'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'XSL Transformation', click: () => { Swordfish.showXSLTransformation(); } }
+            { label: t('xslTransformation'), click: () => { Swordfish.showXSLTransformation(); } }
         ]);
         let termsMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Get Glossary Terms', accelerator: 'CmdOrCtrl+K', click: () => { Swordfish.mainWindow.webContents.send('apply-terminology'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'getTerms.png') },
-            { label: 'Get Terms for All Segments', click: () => { Swordfish.mainWindow.webContents.send('apply-terminology-all'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'requestTerms.png') },
+            { label: t('getGlossaryTerms'), accelerator: 'CmdOrCtrl+K', click: () => { Swordfish.mainWindow.webContents.send('apply-terminology'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'getTerms.png') },
+            { label: t('getTermsAll'), click: () => { Swordfish.mainWindow.webContents.send('apply-terminology-all'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'requestTerms.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Search Term in Glossary', accelerator: 'CmdOrCtrl+D', click: () => { Swordfish.mainWindow.webContents.send('term-search-requested'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'termSearch.png') },
-            { label: 'Add Term to Glossary', accelerator: 'CmdOrCtrl+B', click: () => { Swordfish.mainWindow.webContents.send('add-term-requested'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'addTerm.png') },
+            { label: t('searchTerm'), accelerator: 'CmdOrCtrl+D', click: () => { Swordfish.mainWindow.webContents.send('term-search-requested'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'termSearch.png') },
+            { label: t('addTerm'), accelerator: 'CmdOrCtrl+B', click: () => { Swordfish.mainWindow.webContents.send('add-term-requested'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'addTerm.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Search on IATE', accelerator: 'CmdOrCtrl+Alt+I', click: () => { Swordfish.showIatePlugin(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'IATE.png') },
+            { label: t('searchIate'), accelerator: 'CmdOrCtrl+Alt+I', click: () => { Swordfish.showIatePlugin(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'IATE.png') },
             new MenuItem({ type: 'separator' }),
-            { label: 'Insert Selected Term', accelerator: 'CmdOrCtrl+Alt+K', click: () => { Swordfish.mainWindow.webContents.send('insert-term', { selected: true }); } },
-            { label: 'Select Previous Term', accelerator: 'CmdOrCtrl+Alt+Up', click: () => { Swordfish.mainWindow.webContents.send('select-previous-term'); } },
-            { label: 'Select Next Term', accelerator: 'CmdOrCtrl+Alt+Down', click: () => { Swordfish.mainWindow.webContents.send('select-next-term'); } },
-            new MenuItem({ label: 'Insert Term...', submenu: insrtTermsMenu })
+            { label: t('insertSelectedTerm'), accelerator: 'CmdOrCtrl+Alt+K', click: () => { Swordfish.mainWindow.webContents.send('insert-term', { selected: true }); } },
+            { label: t('selectPreviousTerm'), accelerator: 'CmdOrCtrl+Alt+Up', click: () => { Swordfish.mainWindow.webContents.send('select-previous-term'); } },
+            { label: t('selectNextTerm'), accelerator: 'CmdOrCtrl+Alt+Down', click: () => { Swordfish.mainWindow.webContents.send('select-next-term'); } },
+            new MenuItem({ label: t('insertTerm'), submenu: insrtTermsMenu })
         ]);
         let qaMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Check Inline Tags', accelerator: 'F9', click: () => { Swordfish.mainWindow.webContents.send('tags-analysis'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'tagsAnalysis.png') },
-            { label: 'Check Initial/Trailing Spaces', accelerator: 'F10', click: () => { Swordfish.mainWindow.webContents.send('spaces-analysis'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'spaceAnalysis.png') }
+            { label: t('checkInlineTags'), accelerator: 'F9', click: () => { Swordfish.mainWindow.webContents.send('tags-analysis'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'tagsAnalysis.png') },
+            { label: t('checkSpaces'), accelerator: 'F10', click: () => { Swordfish.mainWindow.webContents.send('spaces-analysis'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'spaceAnalysis.png') }
         ]);
         let tmMtMenu: Menu = Menu.buildFromTemplate([
-            { label: 'Get Translations from Memory', accelerator: 'CmdOrCtrl+M', click: () => { Swordfish.mainWindow.webContents.send('get-tm-matches'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'translate.png') },
-            { label: 'Accept Translation Memory Match', accelerator: 'CmdOrCtrl+Alt+M', click: () => { Swordfish.mainWindow.webContents.send('accept-tm-match'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'accept.png') },
-            { label: 'Apply Translation Memory to All Segments', click: () => { Swordfish.mainWindow.webContents.send('apply-tm-all'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'requestTranslation.png') },
-            { label: 'Accept All 100% Matches', click: () => { Swordfish.mainWindow.webContents.send('accept-all-matches'); } },
-            { label: 'Remove All Translation Memory Matches', click: () => { Swordfish.mainWindow.webContents.send('remove-matches'); } },
+            { label: t('getTm'), accelerator: 'CmdOrCtrl+M', click: () => { Swordfish.mainWindow.webContents.send('get-tm-matches'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'translate.png') },
+            { label: t('acceptTm'), accelerator: 'CmdOrCtrl+Alt+M', click: () => { Swordfish.mainWindow.webContents.send('accept-tm-match'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'accept.png') },
+            { label: t('applyTmAll'), click: () => { Swordfish.mainWindow.webContents.send('apply-tm-all'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'requestTranslation.png') },
+            { label: t('acceptAll100'), click: () => { Swordfish.mainWindow.webContents.send('accept-all-matches'); } },
+            { label: t('removeAllTm'), click: () => { Swordfish.mainWindow.webContents.send('remove-matches'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Get Machine Translations', accelerator: 'CmdOrCtrl+L', click: () => { Swordfish.mainWindow.webContents.send('get-mt-matches'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'translate.png') },
-            { label: 'Accept Machine Translation', accelerator: 'CmdOrCtrl+Alt+L', click: () => { Swordfish.mainWindow.webContents.send('accept-mt-match'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'accept.png') },
-            { label: 'Apply Machine Translation to All Segments', click: () => { Swordfish.mainWindow.webContents.send('apply-mt-all'); } },
-            { label: 'Accept All Machine Translations', click: () => { Swordfish.mainWindow.webContents.send('accept-all-mt'); } },
-            { label: 'Remove All Machine Translations', click: () => { Swordfish.mainWindow.webContents.send('remove-mt-all'); } },
+            { label: t('getMt'), accelerator: 'CmdOrCtrl+L', click: () => { Swordfish.mainWindow.webContents.send('get-mt-matches'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'translate.png') },
+            { label: t('acceptMt'), accelerator: 'CmdOrCtrl+Alt+L', click: () => { Swordfish.mainWindow.webContents.send('accept-mt-match'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'accept.png') },
+            { label: t('applyMtAll'), click: () => { Swordfish.mainWindow.webContents.send('apply-mt-all'); } },
+            { label: t('acceptAllMt'), click: () => { Swordfish.mainWindow.webContents.send('accept-all-mt'); } },
+            { label: t('removeAllMt'), click: () => { Swordfish.mainWindow.webContents.send('remove-mt-all'); } },
             new MenuItem({ type: 'separator' }),
-            { label: 'Get Auto-Translations', accelerator: 'CmdOrCtrl+R', click: () => { Swordfish.mainWindow.webContents.send('get-am-matches'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'autoTranslate.png') },
-            { label: 'Apply Auto-Translation to All Segments', click: () => { Swordfish.mainWindow.webContents.send('apply-am-all'); } },
-            { label: 'Remove All Auto-Translations', click: () => { Swordfish.mainWindow.webContents.send('remove-am-all'); } }
+            { label: t('getAutoTranslations'), accelerator: 'CmdOrCtrl+R', click: () => { Swordfish.mainWindow.webContents.send('get-am-matches'); }, icon: join(app.getAppPath(), 'images', iconFolder, 'autoTranslate.png') },
+            { label: t('applyAutoAll'), click: () => { Swordfish.mainWindow.webContents.send('apply-am-all'); } },
+            { label: t('removeAllAuto'), click: () => { Swordfish.mainWindow.webContents.send('remove-am-all'); } }
         ]);
         let template: MenuItem[] = [
-            new MenuItem({ label: '&File', role: 'fileMenu', submenu: fileMenu }),
-            new MenuItem({ label: '&Edit', role: 'editMenu', submenu: editMenu }),
-            new MenuItem({ label: '&View', role: 'viewMenu', submenu: viewMenu }),
-            new MenuItem({ label: '&Projects', submenu: projectsMenu }),
-            new MenuItem({ label: '&Memories', submenu: memoriesMenu }),
-            new MenuItem({ label: '&Glossaries', submenu: glossariesMenu }),
-            new MenuItem({ label: '&Tasks', submenu: tasksMenu }),
-            new MenuItem({ label: 'TM&-MT', submenu: tmMtMenu }),
-            new MenuItem({ label: 'Te&rms', submenu: termsMenu }),
-            new MenuItem({ label: '&QA', submenu: qaMenu }),
-            new MenuItem({ label: '&AI', submenu: aiMenu }),
-            new MenuItem({ label: '&Help', role: 'help', submenu: helpMenu })
+            new MenuItem({ label: t('file'), role: 'fileMenu', submenu: fileMenu }),
+            new MenuItem({ label: t('edit'), role: 'editMenu', submenu: editMenu }),
+            new MenuItem({ label: t('view'), role: 'viewMenu', submenu: viewMenu }),
+            new MenuItem({ label: t('projects'), submenu: projectsMenu }),
+            new MenuItem({ label: t('memories'), submenu: memoriesMenu }),
+            new MenuItem({ label: t('glossaries'), submenu: glossariesMenu }),
+            new MenuItem({ label: t('tasks'), submenu: tasksMenu }),
+            new MenuItem({ label: t('tmMt'), submenu: tmMtMenu }),
+            new MenuItem({ label: t('terms'), submenu: termsMenu }),
+            new MenuItem({ label: t('qa'), submenu: qaMenu }),
+            new MenuItem({ label: t('ai'), submenu: aiMenu }),
+            new MenuItem({ label: t('help'), role: 'help', submenu: helpMenu })
         ];
         if (process.platform === 'darwin') {
             let appleMenu: Menu = Menu.buildFromTemplate([
-                new MenuItem({ label: 'About...', click: () => { this.showAbout(); } }),
+                new MenuItem({ label: t('about'), click: () => { this.showAbout(); } }),
                 new MenuItem({
-                    label: 'Preferences...', submenu: [
-                        { label: 'Settings', accelerator: 'Cmd+,', click: () => { this.showPreferences(); } }
+                    label: t('applePreferences'), submenu: [
+                        { label: t('preferences'), accelerator: 'Cmd+,', click: () => { this.showPreferences(); } }
                     ]
                 }),
                 new MenuItem({ type: 'separator' }),
                 new MenuItem({
-                    label: 'Services', role: 'services', submenu: [
-                        { label: 'No Services Apply', enabled: false }
+                    label: t('services'), role: 'services', submenu: [
+                        { label: t('noServices'), enabled: false }
                     ]
                 }),
                 new MenuItem({ type: 'separator' }),
-                new MenuItem({ label: 'Quit Swordfish', accelerator: 'Cmd+Q', role: 'quit', click: () => { app.quit(); } })
+                new MenuItem({ label: t('quitSwordfish'), accelerator: 'Cmd+Q', role: 'quit', click: () => { app.quit(); } })
             ]);
             template.unshift(new MenuItem({ label: 'Swordfish', role: 'appMenu', submenu: appleMenu }));
         } else {
             let help: MenuItem = template.pop() as MenuItem;
             template.push(new MenuItem({
-                label: '&Settings', submenu: [
-                    { label: 'Preferences', click: () => { this.showPreferences(); } }
+                label: t('settings'), submenu: [
+                    { label: t('preferences'), click: () => { this.showPreferences(); } }
                 ]
             }));
             template.push(help);
         }
         if (process.platform === 'win32') {
             fileMenu.append(new MenuItem({ type: 'separator' }));
-            fileMenu.append(new MenuItem({ label: 'Exit', accelerator: 'Alt+F4', role: 'quit', click: () => { app.quit(); } }));
+            fileMenu.append(new MenuItem({ label: t('exit'), accelerator: 'Alt+F4', role: 'quit', click: () => { app.quit(); } }));
             helpMenu.append(new MenuItem({ type: 'separator' }));
-            helpMenu.append(new MenuItem({ label: 'About...', click: () => { this.showAbout(); } }));
+            helpMenu.append(new MenuItem({ label: t('about'), click: () => { this.showAbout(); } }));
         }
         if (process.platform === 'linux') {
             fileMenu.append(new MenuItem({ type: 'separator' }));
-            fileMenu.append(new MenuItem({ label: 'Quit', accelerator: 'Ctrl+Q', role: 'quit', click: () => { app.quit(); } }));
+            fileMenu.append(new MenuItem({ label: t('quit'), accelerator: 'Ctrl+Q', role: 'quit', click: () => { app.quit(); } }));
             helpMenu.append(new MenuItem({ type: 'separator' }));
-            helpMenu.append(new MenuItem({ label: 'About...', click: () => { this.showAbout(); } }));
+            helpMenu.append(new MenuItem({ label: t('about'), click: () => { this.showAbout(); } }));
         }
         Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+        if (Swordfish.usesIntegratedTitleBar() && Swordfish.mainWindow && !Swordfish.mainWindow.isDestroyed()) {
+            Swordfish.mainWindow.setMenuBarVisibility(false);
+            Swordfish.mainWindow.setAutoHideMenuBar(false);
+            Swordfish.notifyTitleBarMenu();
+        }
     }
 
     static undo(): void {
@@ -1635,6 +1766,12 @@ export class Swordfish {
         if ('fileInfo' === arg.window) {
             Swordfish.fileInfoWindow.setContentSize(arg.width, arg.height, true);
         }
+        if ('aiPreTranslate' === arg.window && Swordfish.aiPreTranslateWindow && !Swordfish.aiPreTranslateWindow.isDestroyed()) {
+            Swordfish.aiPreTranslateWindow.setContentSize(arg.width, arg.height, true);
+        }
+        if ('aiLifecycle' === arg.window && Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
+            Swordfish.aiLifecycleWindow.setContentSize(arg.width, arg.height, true);
+        }
     }
 
     static loadPreferences(): void {
@@ -1701,7 +1838,11 @@ export class Swordfish {
                     needsSaving = true;
                 }
                 if (!json.hasOwnProperty('appLang')) {
-                    json.appLang = 'en';
+                    json.appLang = 'zh';
+                    needsSaving = true;
+                }
+                if (!json.hasOwnProperty('customAi') || !json.customAi) {
+                    json.customAi = defaultCustomAi();
                     needsSaving = true;
                 }
                 if (!json.hasOwnProperty('matchThreshold')) {
@@ -1773,6 +1914,10 @@ export class Swordfish {
         if (!Swordfish.currentPreferences.os) {
             Swordfish.currentPreferences.os = process.platform;
         }
+        if (!Swordfish.currentPreferences.customAi) {
+            Swordfish.currentPreferences.customAi = defaultCustomAi();
+        }
+        setAppLang(Swordfish.currentPreferences.appLang);
     }
 
     static async savePreferences(preferences: Preferences): Promise<void> {
@@ -1796,10 +1941,16 @@ export class Swordfish {
         let reloadProjects: boolean = this.currentPreferences.projectsFolder !== preferences.projectsFolder;
         let reloadMemories: boolean = this.currentPreferences.memoriesFolder !== preferences.memoriesFolder;
         let reloadGlossaries: boolean = this.currentPreferences.glossariesFolder !== preferences.glossariesFolder;
+        let previousLang: string = Swordfish.currentPreferences.appLang;
         writeFileSync(join(app.getPath('appData'), app.name, 'preferences.json'), JSON.stringify(preferences, null, 2));
         Swordfish.loadPreferences();
         Swordfish.setTheme();
+        Swordfish.createMenu();
         Swordfish.mainWindow.webContents.send('set-zoom', { zoom: Swordfish.currentPreferences.zoomFactor });
+        if (previousLang !== Swordfish.currentPreferences.appLang) {
+            let fileUrl: URL = new URL('file://' + Swordfish.htmlPath('index.html'));
+            Swordfish.mainWindow.loadURL(fileUrl.href);
+        }
         if (reloadProjects) {
             Swordfish.mainWindow.webContents.send('request-projects', {});
         }
@@ -1918,7 +2069,7 @@ export class Swordfish {
         });
         this.sortParams = params;
         this.sortSegmentsWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'sortSegments.html');
+        let filePath: string = Swordfish.htmlPath('sortSegments.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.sortSegmentsWindow.loadURL(fileUrl.href);
         this.sortSegmentsWindow.once('ready-to-show', () => {
@@ -1947,7 +2098,7 @@ export class Swordfish {
         });
         this.filterParams = params;
         this.filterSegmentsWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'filterSegments.html');
+        let filePath: string = Swordfish.htmlPath('filterSegments.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.filterSegmentsWindow.loadURL(fileUrl.href);
         this.filterSegmentsWindow.once('ready-to-show', () => {
@@ -1988,7 +2139,7 @@ export class Swordfish {
             }
         });
         this.addProjectWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addProject.html');
+        let filePath: string = Swordfish.htmlPath('addProject.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.addProjectWindow.loadURL(fileUrl.href);
         this.addProjectWindow.once('ready-to-show', () => {
@@ -2017,7 +2168,7 @@ export class Swordfish {
             }
         });
         this.editProjectWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'editProject.html');
+        let filePath: string = Swordfish.htmlPath('editProject.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.editProjectWindow.loadURL(fileUrl.href);
         this.editProjectWindow.once('ready-to-show', () => {
@@ -2177,7 +2328,7 @@ export class Swordfish {
                     }
                 });
                 this.addFileWindow.setMenu(null);
-                let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addFile.html');
+                let filePath: string = Swordfish.htmlPath('addFile.html');
                 let fileUrl: URL = new URL('file://' + filePath);
                 this.addFileWindow.loadURL(fileUrl.href);
                 this.addFileWindow.once('ready-to-show', () => {
@@ -2454,7 +2605,7 @@ export class Swordfish {
         });
         this.typeParam = type;
         this.serverSettingsWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'serverSettings.html');
+        let filePath: string = Swordfish.htmlPath('serverSettings.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.serverSettingsWindow.loadURL(fileUrl.href);
         this.serverSettingsWindow.once('ready-to-show', () => {
@@ -2482,7 +2633,7 @@ export class Swordfish {
             }
         });
         this.browseDatabasesWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'browseDatabases.html');
+        let filePath: string = Swordfish.htmlPath('browseDatabases.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.browseDatabasesWindow.loadURL(fileUrl.href);
         this.browseDatabasesWindow.once('ready-to-show', () => {
@@ -2552,7 +2703,7 @@ export class Swordfish {
             }
         });
         this.addMemoryWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addMemory.html');
+        let filePath: string = Swordfish.htmlPath('addMemory.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.addMemoryWindow.loadURL(fileUrl.href);
         this.addMemoryWindow.once('ready-to-show', () => {
@@ -2645,7 +2796,7 @@ export class Swordfish {
             }
         });
         Swordfish.aboutWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'about.html');
+        let filePath: string = Swordfish.htmlPath('about.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.aboutWindow.loadURL(fileUrl.href);
         Swordfish.aboutWindow.once('ready-to-show', () => {
@@ -2744,7 +2895,7 @@ export class Swordfish {
             }
         });
         this.preferencesWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'preferencesDialog.html');
+        let filePath: string = Swordfish.htmlPath('preferencesDialog.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.preferencesWindow.loadURL(fileUrl.href);
         this.preferencesWindow.once('ready-to-show', () => {
@@ -2774,7 +2925,7 @@ export class Swordfish {
             }
         });
         this.systemInfoWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'systemInfo.html');
+        let filePath: string = Swordfish.htmlPath('systemInfo.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.systemInfoWindow.loadURL(fileUrl.href);
         this.systemInfoWindow.once('ready-to-show', () => {
@@ -2822,7 +2973,7 @@ export class Swordfish {
             }
         });
         this.licensesWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'licenses.html');
+        let filePath: string = Swordfish.htmlPath('licenses.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.licensesWindow.loadURL(fileUrl.href);
         this.licensesWindow.once('ready-to-show', () => {
@@ -2890,6 +3041,9 @@ export class Swordfish {
         BrowserWindow.getAllWindows().forEach((win: BrowserWindow) => {
             win.webContents.send('set-theme', Swordfish.currentCss);
         });
+        if (Swordfish.usesIntegratedTitleBar() && Swordfish.mainWindow && !Swordfish.mainWindow.isDestroyed()) {
+            Swordfish.mainWindow.setTitleBarOverlay(Swordfish.getTitleBarOverlay());
+        }
     }
 
     static checkUpdates(silent: boolean): void {
@@ -2942,7 +3096,7 @@ export class Swordfish {
                                 }
                             });
                             Swordfish.updatesWindow.setMenu(null);
-                            let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'updates.html');
+                            let filePath: string = Swordfish.htmlPath('updates.html');
                             let fileUrl: URL = new URL('file://' + filePath);
                             Swordfish.updatesWindow.loadURL(fileUrl.href);
                             Swordfish.updatesWindow.once('ready-to-show', () => {
@@ -3217,7 +3371,7 @@ export class Swordfish {
             }
         });
         this.defaultLangsWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'defaultLangs.html');
+        let filePath: string = Swordfish.htmlPath('defaultLangs.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.defaultLangsWindow.loadURL(fileUrl.href);
         this.defaultLangsWindow.once('ready-to-show', () => {
@@ -3365,7 +3519,7 @@ export class Swordfish {
         });
         this.memoryParam = memory;
         this.importSdltmWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'importSdltm.html');
+        let filePath: string = Swordfish.htmlPath('importSdltm.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.importSdltmWindow.loadURL(fileUrl.href);
         this.importSdltmWindow.once('ready-to-show', () => {
@@ -3394,7 +3548,7 @@ export class Swordfish {
         });
         this.memoryParam = memory;
         this.importTmxWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'importTmx.html');
+        let filePath: string = Swordfish.htmlPath('importTmx.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.importTmxWindow.loadURL(fileUrl.href);
         this.importTmxWindow.once('ready-to-show', () => {
@@ -3423,7 +3577,7 @@ export class Swordfish {
         });
         this.selectedGlossary = glossary;
         this.importGlossaryWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'importGlossary.html');
+        let filePath: string = Swordfish.htmlPath('importGlossary.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.importGlossaryWindow.loadURL(fileUrl.href);
         this.importGlossaryWindow.once('ready-to-show', () => {
@@ -3996,7 +4150,7 @@ export class Swordfish {
         }
         Swordfish.projectParam = arg.project;
         this.applyTmWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'applyTm.html');
+        let filePath: string = Swordfish.htmlPath('applyTm.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.applyTmWindow.loadURL(fileUrl.href);
         this.applyTmWindow.once('ready-to-show', () => {
@@ -4137,7 +4291,7 @@ export class Swordfish {
             }
         });
         Swordfish.spellingLangsWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'spellingLangs.html');
+        let filePath: string = Swordfish.htmlPath('spellingLangs.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.spellingLangsWindow.loadURL(fileUrl.href);
         Swordfish.spellingLangsWindow.once('ready-to-show', () => {
@@ -4245,6 +4399,10 @@ export class Swordfish {
                 case 'addCommentDialog': parent = Swordfish.addCommentWindow;
                     break;
                 case 'addReplyDialog': parent = Swordfish.addReplyWindow;
+                    break;
+                case 'aiPreTranslate': parent = Swordfish.aiPreTranslateWindow;
+                    break;
+                case 'aiLifecycle': parent = Swordfish.aiLifecycleWindow;
                     break;
                 default: parent = Swordfish.mainWindow;
             }
@@ -4562,7 +4720,7 @@ export class Swordfish {
             }
         });
         this.addGlossaryWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addGlossary.html');
+        let filePath: string = Swordfish.htmlPath('addGlossary.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.addGlossaryWindow.loadURL(fileUrl.href);
         this.addGlossaryWindow.once('ready-to-show', () => {
@@ -4594,7 +4752,7 @@ export class Swordfish {
             }
         });
         this.importXliffWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'importXliff.html');
+        let filePath: string = Swordfish.htmlPath('importXliff.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.importXliffWindow.loadURL(fileUrl.href);
         this.importXliffWindow.once('ready-to-show', () => {
@@ -4688,7 +4846,7 @@ export class Swordfish {
                 }
             });
             this.addFileWindow.setMenu(null);
-            let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addFile.html');
+            let filePath: string = Swordfish.htmlPath('addFile.html');
             let fileUrl: URL = new URL('file://' + filePath);
             this.addFileWindow.loadURL(fileUrl.href);
             this.addFileWindow.once('ready-to-show', () => {
@@ -5079,7 +5237,7 @@ export class Swordfish {
             }
         });
         this.tagsWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'tags.html');
+        let filePath: string = Swordfish.htmlPath('tags.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.tagsWindow.loadURL(fileUrl.href);
         this.tagsWindow.once('ready-to-show', () => {
@@ -5135,7 +5293,7 @@ export class Swordfish {
             }
         });
         this.goToWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'goTo.html');
+        let filePath: string = Swordfish.htmlPath('goTo.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.goToWindow.loadURL(fileUrl.href);
         this.goToWindow.once('ready-to-show', () => {
@@ -5170,7 +5328,7 @@ export class Swordfish {
         });
         this.projectParam = arg.project;
         this.replaceTextWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'replaceText.html');
+        let filePath: string = Swordfish.htmlPath('replaceText.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.replaceTextWindow.loadURL(fileUrl.href);
         this.replaceTextWindow.once('ready-to-show', () => {
@@ -5436,7 +5594,7 @@ export class Swordfish {
         });
         Swordfish.concordanceMemories = memories;
         this.concordanceSearchWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'concordanceSearch.html');
+        let filePath: string = Swordfish.htmlPath('concordanceSearch.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.concordanceSearchWindow.loadURL(fileUrl.href);
         this.concordanceSearchWindow.once('ready-to-show', () => {
@@ -5508,7 +5666,7 @@ export class Swordfish {
         Swordfish.htmlTitle = 'Concordance Search';
         Swordfish.htmlId = htmlViewerWindow.id;
         htmlViewerWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'htmlViewer.html');
+        let filePath: string = Swordfish.htmlPath('htmlViewer.html');
         let fileUrl: URL = new URL('file://' + filePath);
         htmlViewerWindow.loadURL(fileUrl.href);
         htmlViewerWindow.once('ready-to-show', () => {
@@ -5535,7 +5693,7 @@ export class Swordfish {
             }
         });
         this.iatePluginWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'iatePlugin.html');
+        let filePath: string = Swordfish.htmlPath('iatePlugin.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.iatePluginWindow.loadURL(fileUrl.href);
         this.iatePluginWindow.once('ready-to-show', () => {
@@ -5564,7 +5722,7 @@ export class Swordfish {
         });
         this.selectedGlossary = glossary;
         this.termSearchWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'termSearch.html');
+        let filePath: string = Swordfish.htmlPath('termSearch.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.termSearchWindow.loadURL(fileUrl.href);
         this.termSearchWindow.once('ready-to-show', () => {
@@ -5606,7 +5764,7 @@ export class Swordfish {
                 Swordfish.htmlContent = data.html;
                 Swordfish.htmlId = htmlViewerWindow.id;
                 htmlViewerWindow.setMenu(null);
-                let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'htmlViewer.html');
+                let filePath: string = Swordfish.htmlPath('htmlViewer.html');
                 let fileUrl: URL = new URL('file://' + filePath);
                 htmlViewerWindow.loadURL(fileUrl.href);
                 htmlViewerWindow.once('ready-to-show', () => {
@@ -5640,7 +5798,7 @@ export class Swordfish {
         });
         this.selectedGlossary = glossary;
         this.addTermWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addTerm.html');
+        let filePath: string = Swordfish.htmlPath('addTerm.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.addTermWindow.loadURL(fileUrl.href);
         this.addTermWindow.once('ready-to-show', () => {
@@ -5801,7 +5959,7 @@ export class Swordfish {
             }
         });
         Swordfish.spaceAnalysisWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'spaceAnalysis.html');
+        let filePath: string = Swordfish.htmlPath('spaceAnalysis.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.spaceAnalysisWindow.loadURL(fileUrl.href);
         Swordfish.spaceAnalysisWindow.once('ready-to-show', () => {
@@ -5830,7 +5988,7 @@ export class Swordfish {
             }
         });
         Swordfish.tagsAnalysisWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'tagsAnalysis.html');
+        let filePath: string = Swordfish.htmlPath('tagsAnalysis.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.tagsAnalysisWindow.loadURL(fileUrl.href);
         Swordfish.tagsAnalysisWindow.once('ready-to-show', () => {
@@ -5973,7 +6131,7 @@ export class Swordfish {
                 }
             });
             this.promptWindow.setMenu(null);
-            let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'promptDialog.html');
+            let filePath: string = Swordfish.htmlPath('promptDialog.html');
             let fileUrl: URL = new URL('file://' + filePath);
             this.promptWindow.loadURL(fileUrl.href);
         }
@@ -6140,7 +6298,7 @@ export class Swordfish {
             }
         });
         this.changeCaseWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'changeCase.html');
+        let filePath: string = Swordfish.htmlPath('changeCase.html');
         let fileUrl: URL = new URL('file://' + filePath);
         this.changeCaseWindow.loadURL(fileUrl.href);
         this.changeCaseWindow.once('ready-to-show', () => {
@@ -6238,7 +6396,7 @@ export class Swordfish {
             }
         });
         Swordfish.contextWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'context.html');
+        let filePath: string = Swordfish.htmlPath('context.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.contextWindow.loadURL(fileUrl.href);
         Swordfish.contextWindow.addListener('closed', () => {
@@ -6304,7 +6462,7 @@ export class Swordfish {
             }
         });
         Swordfish.notesWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'notes.html');
+        let filePath: string = Swordfish.htmlPath('notes.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.notesWindow.loadURL(fileUrl.href);
         Swordfish.notesWindow.addListener('closed', () => {
@@ -6361,7 +6519,7 @@ export class Swordfish {
             }
         });
         Swordfish.addNoteWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addNote.html');
+        let filePath: string = Swordfish.htmlPath('addNote.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.addNoteWindow.loadURL(fileUrl.href);
         Swordfish.addNoteWindow.once('ready-to-show', () => {
@@ -6400,7 +6558,7 @@ export class Swordfish {
             }
         });
         Swordfish.addNoteWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addNote.html');
+        let filePath: string = Swordfish.htmlPath('addNote.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.addNoteWindow.loadURL(fileUrl.href);
         Swordfish.addNoteWindow.once('ready-to-show', () => {
@@ -6499,7 +6657,7 @@ export class Swordfish {
             }
         });
         Swordfish.fileInfoWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'fileInfo.html');
+        let filePath: string = Swordfish.htmlPath('fileInfo.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.fileInfoWindow.loadURL(fileUrl.href);
         Swordfish.fileInfoWindow.once('ready-to-show', () => {
@@ -6536,7 +6694,7 @@ export class Swordfish {
             }
         });
         Swordfish.reviewCommentsWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'commentsDialog.html');
+        let filePath: string = Swordfish.htmlPath('commentsDialog.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.reviewCommentsWindow.loadURL(fileUrl.href);
         Swordfish.reviewCommentsWindow.addListener('closed', () => {
@@ -6614,7 +6772,7 @@ export class Swordfish {
             }
         });
         Swordfish.addCommentWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addComment.html');
+        let filePath: string = Swordfish.htmlPath('addComment.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.addCommentWindow.loadURL(fileUrl.href);
         Swordfish.addCommentWindow.once('ready-to-show', () => {
@@ -6676,7 +6834,7 @@ export class Swordfish {
             }
         });
         Swordfish.addCommentWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addComment.html');
+        let filePath: string = Swordfish.htmlPath('addComment.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.addCommentWindow.loadURL(fileUrl.href);
         Swordfish.addCommentWindow.once('ready-to-show', () => {
@@ -6711,7 +6869,7 @@ export class Swordfish {
             }
         });
         Swordfish.addReplyWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addReply.html');
+        let filePath: string = Swordfish.htmlPath('addReply.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.addReplyWindow.loadURL(fileUrl.href);
         Swordfish.addReplyWindow.once('ready-to-show', () => {
@@ -6746,7 +6904,7 @@ export class Swordfish {
             }
         });
         Swordfish.addReplyWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addReply.html');
+        let filePath: string = Swordfish.htmlPath('addReply.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.addReplyWindow.loadURL(fileUrl.href);
         Swordfish.addReplyWindow.once('ready-to-show', () => {
@@ -6834,7 +6992,7 @@ export class Swordfish {
             }
         });
         Swordfish.gettingStartedWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'gettingStarted.html');
+        let filePath: string = Swordfish.htmlPath('gettingStarted.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.gettingStartedWindow.loadURL(fileUrl.href);
         Swordfish.gettingStartedWindow.once('ready-to-show', () => {
@@ -6879,7 +7037,7 @@ export class Swordfish {
             }
         });
         Swordfish.editXmlFilterWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'filterConfig.html');
+        let filePath: string = Swordfish.htmlPath('filterConfig.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.editXmlFilterWindow.loadURL(fileUrl.href);
         Swordfish.editXmlFilterWindow.once('ready-to-show', () => {
@@ -6970,7 +7128,7 @@ export class Swordfish {
             }
         });
         Swordfish.configElementWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'elementConfig.html');
+        let filePath: string = Swordfish.htmlPath('elementConfig.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.configElementWindow.loadURL(fileUrl.href);
         Swordfish.configElementWindow.once('ready-to-show', () => {
@@ -7079,7 +7237,7 @@ export class Swordfish {
             }
         });
         Swordfish.addXmlConfigurationWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'addXmlConfiguration.html');
+        let filePath: string = Swordfish.htmlPath('addXmlConfiguration.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.addXmlConfigurationWindow.loadURL(fileUrl.href);
         Swordfish.addXmlConfigurationWindow.once('ready-to-show', () => {
@@ -7185,7 +7343,7 @@ export class Swordfish {
             }
         });
         Swordfish.XSLTransformationWindow.setMenu(null);
-        let filePath: string = join(app.getAppPath(), 'html', Swordfish.currentPreferences.appLang, 'XSLTransformation.html');
+        let filePath: string = Swordfish.htmlPath('XSLTransformation.html');
         let fileUrl: URL = new URL('file://' + filePath);
         Swordfish.XSLTransformationWindow.loadURL(fileUrl.href);
         Swordfish.XSLTransformationWindow.once('ready-to-show', () => {
@@ -7218,6 +7376,449 @@ export class Swordfish {
             }
         );
     }
+
+    static htmlPath(file: string): string {
+        let lang: string = Swordfish.currentPreferences.appLang || 'zh';
+        let localized: string = join(app.getAppPath(), 'html', lang, file);
+        if (existsSync(localized)) {
+            return localized;
+        }
+        return join(app.getAppPath(), 'html', 'en', file);
+    }
+
+    static hasAnyMtEngine(): boolean {
+        let preferences: Preferences = Swordfish.currentPreferences;
+        return !!(preferences.google.enabled || preferences.azure.enabled || preferences.deepl.enabled
+            || preferences.chatGpt.enabled || preferences.anthropic.enabled || preferences.mistral.enabled
+            || preferences.gemini.enabled || preferences.qwen.enabled || preferences.ollama.enabled
+            || preferences.modernmt.enabled || (preferences.customAi && preferences.customAi.enabled));
+    }
+
+    static sendRequestAsync(url: string, params: any): Promise<any> {
+        return new Promise((resolve: (data: any) => void, reject: (reason: string) => void) => {
+            Swordfish.sendRequest(url, params, resolve, reject);
+        });
+    }
+
+    static waitForProcess(processId: string): Promise<any> {
+        return new Promise((resolve: (data: any) => void, reject: (reason: Error) => void) => {
+            let poll: () => void = () => {
+                if (Swordfish.lifecycleCancelled) {
+                    reject(new Error(t('lifecycleCancelled')));
+                    return;
+                }
+                Swordfish.sendRequest('/projects/status', { process: processId },
+                    (data: any) => {
+                        if (data.progress === Swordfish.COMPLETED) {
+                            resolve(data);
+                            return;
+                        }
+                        if (data.progress === Swordfish.ERROR) {
+                            reject(new Error(data.reason || t('unknownError')));
+                            return;
+                        }
+                        setTimeout(poll, 500);
+                    },
+                    (reason: string) => {
+                        reject(new Error(reason));
+                    }
+                );
+            };
+            poll();
+        });
+    }
+
+    static lifecycleLog(line: string): void {
+        if (Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
+            Swordfish.aiLifecycleWindow.webContents.send('lifecycle-log', line);
+        }
+    }
+
+    static lifecycleStep(id: string, state: string, detail?: string): void {
+        if (Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
+            Swordfish.aiLifecycleWindow.webContents.send('lifecycle-step', { id: id, state: state, detail: detail });
+        }
+    }
+
+    static assertNotCancelled(): void {
+        if (Swordfish.lifecycleCancelled) {
+            throw new Error(t('lifecycleCancelled'));
+        }
+    }
+
+    static showAiPreTranslate(arg: any): void {
+        if (!arg || !arg.project) {
+            Swordfish.showMessage({ type: 'warning', message: t('preTranslateNeedProject') });
+            return;
+        }
+        Swordfish.preTranslateContext = arg;
+        if (arg.memory) {
+            Swordfish.memoryParam = arg.memory;
+        }
+        Swordfish.projectParam = arg.project;
+        this.aiPreTranslateWindow = new BrowserWindow({
+            parent: this.mainWindow,
+            width: 520,
+            height: 360,
+            minimizable: false,
+            maximizable: false,
+            resizable: false,
+            show: false,
+            icon: this.iconPath,
+            webPreferences: {
+                nodeIntegration: true,
+                contextIsolation: false
+            }
+        });
+        this.aiPreTranslateWindow.setMenu(null);
+        let fileUrl: URL = new URL('file://' + Swordfish.htmlPath('aiPreTranslate.html'));
+        this.aiPreTranslateWindow.loadURL(fileUrl.href);
+        this.aiPreTranslateWindow.once('ready-to-show', () => {
+            this.aiPreTranslateWindow.show();
+        });
+        this.aiPreTranslateWindow.on('close', () => {
+            this.mainWindow.focus();
+        });
+        Swordfish.setLocation(this.aiPreTranslateWindow, 'aiPreTranslate.html');
+    }
+
+    static closeAiPreTranslate(): void {
+        if (Swordfish.aiPreTranslateWindow && !Swordfish.aiPreTranslateWindow.isDestroyed()) {
+            Swordfish.aiPreTranslateWindow.close();
+        }
+    }
+
+    static async runAiPreTranslate(arg: any): Promise<void> {
+        try {
+            Swordfish.closeAiPreTranslate();
+            Swordfish.mainWindow.webContents.send('start-waiting');
+            if (arg.applyTmFirst) {
+                Swordfish.mainWindow.webContents.send('set-status', t('translatingProject'));
+                await Swordfish.applyTmAllSilent({
+                    project: arg.project,
+                    memory: arg.memory,
+                    penalization: arg.penalization || 0
+                });
+            }
+            if (arg.thenAiTranslate) {
+                if (!Swordfish.hasAnyMtEngine()) {
+                    throw new Error(t('preTranslateNeedEngine'));
+                }
+                Swordfish.mainWindow.webContents.send('set-status', t('translating'));
+                await Swordfish.applyMtAllSilent({
+                    project: arg.project,
+                    srcLang: arg.srcLang,
+                    tgtLang: arg.tgtLang
+                });
+                if (arg.autoAcceptAi) {
+                    Swordfish.mainWindow.webContents.send('set-status', t('acceptingMatches'));
+                    await Swordfish.acceptAllMtSilent({ project: arg.project });
+                }
+            }
+            if (arg.autoConfirmAi) {
+                Swordfish.mainWindow.webContents.send('set-status', t('confirmingTranslations'));
+                await Swordfish.confirmAllSilent({ project: arg.project });
+            }
+            Swordfish.mainWindow.webContents.send('reload-page', arg.project);
+            Swordfish.showMessage({ type: 'info', message: t('preTranslateDone') });
+        } catch (error: unknown) {
+            let message: string = error instanceof Error ? error.message : t('unknownError');
+            Swordfish.showMessage({ type: 'error', message: message });
+        } finally {
+            Swordfish.mainWindow.webContents.send('end-waiting');
+            Swordfish.mainWindow.webContents.send('set-status', '');
+        }
+    }
+
+    static showAiLifecycle(): void {
+        if (Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
+            Swordfish.aiLifecycleWindow.focus();
+            return;
+        }
+        this.aiLifecycleWindow = new BrowserWindow({
+            parent: this.mainWindow,
+            width: 980,
+            height: 720,
+            minimizable: false,
+            maximizable: false,
+            resizable: true,
+            show: false,
+            icon: this.iconPath,
+            webPreferences: {
+                nodeIntegration: true,
+                contextIsolation: false
+            }
+        });
+        this.aiLifecycleWindow.setMenu(null);
+        let fileUrl: URL = new URL('file://' + Swordfish.htmlPath('aiLifecycle.html'));
+        this.aiLifecycleWindow.loadURL(fileUrl.href);
+        this.aiLifecycleWindow.once('ready-to-show', () => {
+            this.aiLifecycleWindow.show();
+        });
+        this.aiLifecycleWindow.on('close', () => {
+            this.mainWindow.focus();
+        });
+        Swordfish.setLocation(this.aiLifecycleWindow, 'aiLifecycle.html');
+    }
+
+    static closeAiLifecycle(): void {
+        if (Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
+            Swordfish.aiLifecycleWindow.close();
+        }
+    }
+
+    static lifecycleSelectFiles(event: IpcMainEvent): void {
+        let extensions: string[] = ['inx', 'icml', 'idml', 'ditamap', 'dita', 'xml', 'html', 'htm', 'js', 'properties',
+            'json', 'md', 'mif', 'docx', 'xlsx', 'pptx', 'sxw', 'sxc', 'sxi', 'sxd', 'odt', 'ods', 'odp', 'odg', 'txt',
+            'po', 'pot', 'rc', 'resx', 'sdlxliff', 'srt', 'svg', 'sdlppx', 'ts', 'txml', 'vtt', 'vsdx', 'xlf', 'xliff', 'mqxliff', 'txlf'];
+        dialog.showOpenDialog(Swordfish.aiLifecycleWindow || Swordfish.mainWindow, {
+            properties: ['openFile', 'multiSelections'],
+            filters: [
+                { name: t('files'), extensions: extensions },
+                { name: t('none'), extensions: ['*'] }
+            ]
+        }).then((value: OpenDialogReturnValue) => {
+            if (!value.canceled) {
+                event.sender.send('lifecycle-files-selected', value.filePaths);
+            }
+        }).catch((error: Error) => {
+            Swordfish.showMessage({ type: 'error', message: error.message, parent: 'aiLifecycle' });
+        });
+    }
+
+    static lifecycleBrowseExport(event: IpcMainEvent): void {
+        dialog.showOpenDialog(Swordfish.aiLifecycleWindow || Swordfish.mainWindow, {
+            title: t('exportFolder'),
+            properties: ['createDirectory', 'openDirectory']
+        }).then((value: OpenDialogReturnValue) => {
+            if (!value.canceled) {
+                event.sender.send('lifecycle-export-folder', value.filePaths[0]);
+            }
+        }).catch((error: Error) => {
+            Swordfish.showMessage({ type: 'error', message: error.message, parent: 'aiLifecycle' });
+        });
+    }
+
+    static async runAiLifecycle(arg: any): Promise<void> {
+        Swordfish.lifecycleCancelled = false;
+        let projectId: string = '';
+        try {
+            Swordfish.lifecycleStep('prepare', 'running', t('running'));
+            Swordfish.lifecycleLog(t('stepPrepare'));
+            Swordfish.assertNotCancelled();
+            if (!arg.files || arg.files.length === 0) {
+                throw new Error(t('lifecycleNeedFiles'));
+            }
+            let typeData: any = await Swordfish.sendRequestAsync('/services/getFileType', { files: arg.files });
+            if (typeData.status && typeData.status !== Swordfish.SUCCESS) {
+                throw new Error(typeData.reason || t('unknownError'));
+            }
+            Swordfish.lifecycleTypedFiles = typeData.files || [];
+            Swordfish.lifecycleStep('prepare', 'done', t('done'));
+
+            Swordfish.lifecycleStep('create', 'running', t('creatingProject'));
+            Swordfish.lifecycleLog(t('creatingProject'));
+            Swordfish.assertNotCancelled();
+            Swordfish.mainWindow.webContents.send('start-waiting');
+            Swordfish.mainWindow.webContents.send('set-status', t('creatingProject'));
+            let createData: any = await Swordfish.sendRequestAsync('/projects/create', {
+                description: arg.name,
+                files: Swordfish.lifecycleTypedFiles,
+                subject: '',
+                client: '',
+                srcLang: arg.srcLang,
+                tgtLang: arg.tgtLang,
+                memory: arg.memory || 'none',
+                applyTM: false,
+                glossary: arg.glossary || 'none',
+                searchTerms: false,
+                xmlfilter: join(app.getAppPath(), 'xmlfilter'),
+                from: 'lifecycle'
+            });
+            if (createData.status !== Swordfish.SUCCESS) {
+                throw new Error(createData.reason || t('unknownErrorProcessing'));
+            }
+            await Swordfish.waitForProcess(createData.process);
+            projectId = createData.process;
+            Swordfish.lifecycleLog(t('lifecycleCreated', projectId));
+            Swordfish.lifecycleStep('create', 'done', t('lifecycleCreated', projectId));
+
+            if (arg.openEditor) {
+                Swordfish.lifecycleStep('open', 'running', t('running'));
+                Swordfish.mainWindow.webContents.send('request-projects', { open: projectId });
+                Swordfish.lifecycleLog(t('lifecycleOpened'));
+                Swordfish.lifecycleStep('open', 'done', t('lifecycleOpened'));
+            } else {
+                Swordfish.lifecycleStep('open', 'skipped', t('skipped'));
+            }
+
+            if (arg.memory && arg.memory !== 'none') {
+                Swordfish.lifecycleStep('tm', 'running', t('translatingProject'));
+                Swordfish.lifecycleLog(t('stepTm'));
+                Swordfish.assertNotCancelled();
+                await Swordfish.applyTmAllSilent({ project: projectId, memory: arg.memory, penalization: 0 });
+                Swordfish.lifecycleStep('tm', 'done', t('done'));
+            } else {
+                Swordfish.lifecycleStep('tm', 'skipped', t('skipped'));
+            }
+
+            Swordfish.lifecycleStep('ai', 'running', t('translating'));
+            Swordfish.lifecycleLog(t('stepAi'));
+            Swordfish.assertNotCancelled();
+            if (!Swordfish.hasAnyMtEngine()) {
+                throw new Error(t('lifecycleNeedEngine'));
+            }
+            await Swordfish.applyMtAllSilent({ project: projectId, srcLang: arg.srcLang, tgtLang: arg.tgtLang });
+            Swordfish.lifecycleStep('ai', 'done', t('done'));
+
+            Swordfish.lifecycleStep('accept', 'running', t('acceptingMatches'));
+            Swordfish.lifecycleLog(t('stepAccept'));
+            Swordfish.assertNotCancelled();
+            await Swordfish.acceptAllMtSilent({ project: projectId });
+            Swordfish.lifecycleStep('accept', 'done', t('done'));
+
+            if (arg.runQa) {
+                Swordfish.lifecycleStep('qa', 'running', t('running'));
+                Swordfish.lifecycleLog(t('stepQa'));
+                Swordfish.assertNotCancelled();
+                let tags: any = await Swordfish.sendRequestAsync('/projects/analyzeTags', { project: projectId });
+                let spaces: any = await Swordfish.sendRequestAsync('/projects/analyzeSpaces', { project: projectId });
+                let tagCount: number = Array.isArray(tags.errors) ? tags.errors.length : (tags.count || 0);
+                let spaceCount: number = Array.isArray(spaces.errors) ? spaces.errors.length : (spaces.count || 0);
+                let qaDetail: string = (tagCount === 0 && spaceCount === 0)
+                    ? t('noQaIssues')
+                    : (t('tagsIssues', tagCount) + ' / ' + t('spaceIssues', spaceCount));
+                Swordfish.lifecycleLog(qaDetail);
+                Swordfish.lifecycleStep('qa', 'done', qaDetail);
+            } else {
+                Swordfish.lifecycleStep('qa', 'skipped', t('skipped'));
+            }
+
+            if (arg.confirmAfter) {
+                Swordfish.lifecycleStep('confirm', 'running', t('confirmingTranslations'));
+                Swordfish.lifecycleLog(t('stepConfirm'));
+                Swordfish.assertNotCancelled();
+                await Swordfish.confirmAllSilent({ project: projectId });
+                Swordfish.lifecycleStep('confirm', 'done', t('done'));
+            } else {
+                Swordfish.lifecycleStep('confirm', 'skipped', t('skipped'));
+            }
+
+            if (arg.exportAfter) {
+                Swordfish.lifecycleStep('export', 'running', t('exportingTranslations'));
+                Swordfish.lifecycleLog(t('stepExport'));
+                Swordfish.assertNotCancelled();
+                let exportData: any = await Swordfish.sendRequestAsync('/projects/translations', { project: projectId, output: arg.exportFolder });
+                if (exportData.status !== Swordfish.SUCCESS) {
+                    throw new Error(exportData.reason || t('unknownErrorExport'));
+                }
+                if (exportData.process) {
+                    await Swordfish.waitForProcess(exportData.process);
+                }
+                Swordfish.lifecycleLog(t('translationsExported'));
+                Swordfish.lifecycleStep('export', 'done', t('translationsExported'));
+            } else {
+                Swordfish.lifecycleStep('export', 'skipped', t('skipped'));
+            }
+
+            Swordfish.lifecycleStep('done', 'done', t('lifecycleFinished'));
+            Swordfish.lifecycleLog(t('lifecycleFinished'));
+            if (projectId) {
+                Swordfish.mainWindow.webContents.send('reload-page', projectId);
+                Swordfish.mainWindow.webContents.send('request-projects', {});
+            }
+            Swordfish.showMessage({ type: 'info', message: t('lifecycleFinished'), parent: 'aiLifecycle' });
+        } catch (error: unknown) {
+            let message: string = error instanceof Error ? error.message : t('unknownError');
+            Swordfish.lifecycleLog(message);
+            let failedStep: string = 'done';
+            Swordfish.lifecycleStep(failedStep, 'failed', message);
+            if (message !== t('lifecycleCancelled')) {
+                Swordfish.showMessage({ type: 'error', message: message, parent: 'aiLifecycle' });
+            }
+        } finally {
+            Swordfish.mainWindow.webContents.send('end-waiting');
+            Swordfish.mainWindow.webContents.send('set-status', '');
+            if (Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
+                Swordfish.aiLifecycleWindow.webContents.send('lifecycle-finished');
+            }
+        }
+    }
+
+    static async applyTmAllSilent(arg: any): Promise<any> {
+        let data: any = await Swordfish.sendRequestAsync('/projects/tmTranslateAll', arg);
+        if (data.status !== Swordfish.SUCCESS) {
+            throw new Error(data.reason || t('unknownError'));
+        }
+        return Swordfish.waitForProcess(data.process);
+    }
+
+    static async applyMtAllSilent(arg: any): Promise<void> {
+        Swordfish.mainWindow.webContents.send('set-status', t('selectingSegments'));
+        let data: any = await Swordfish.sendRequestAsync('/projects/applyMtAll', arg);
+        if (data.status !== Swordfish.SUCCESS) {
+            throw new Error(data.reason || t('unknownErrorMt'));
+        }
+        await Swordfish.waitForProcess(data.process);
+        let exportedFile: string = join(Swordfish.currentPreferences.projectsFolder, arg.project, 'applymt.xlf');
+        if (!existsSync(exportedFile)) {
+            throw new Error(t('unableFindExported'));
+        }
+        Swordfish.mainWindow.webContents.send('set-status', t('translating'));
+        let mtManager: MTManager = new MTManager(Swordfish.currentPreferences, arg.srcLang, arg.tgtLang);
+        await mtManager.translateProject(arg.project, exportedFile, arg.currentSegment);
+        if (existsSync(exportedFile)) {
+            unlinkSync(exportedFile);
+        }
+        Swordfish.mainWindow.webContents.send('reload-page', arg.project);
+    }
+
+    static async acceptAllMtSilent(arg: any): Promise<any> {
+        let data: any = await Swordfish.sendRequestAsync('/projects/acceptAllMT', arg);
+        if (data.status !== Swordfish.SUCCESS) {
+            throw new Error(data.reason || t('unknownError'));
+        }
+        if (data.statistics) {
+            Swordfish.mainWindow.webContents.send('set-statistics', { project: arg.project, statistics: data.statistics });
+        }
+        Swordfish.mainWindow.webContents.send('reload-page', arg.project);
+        return data;
+    }
+
+    static async confirmAllSilent(arg: any): Promise<any> {
+        let data: any = await Swordfish.sendRequestAsync('/projects/confirmAllTranslations', arg);
+        if (data.status !== Swordfish.SUCCESS) {
+            throw new Error(data.reason || t('unknownError'));
+        }
+        let result: any = data.process ? await Swordfish.waitForProcess(data.process) : data;
+        Swordfish.mainWindow.webContents.send('reload-page', arg.project);
+        return result;
+    }
+
+    static async testCustomAi(event: IpcMainEvent, arg: any): Promise<void> {
+        try {
+            let config: CustomAiConfig = {
+                enabled: true,
+                name: arg.name || 'Custom AI',
+                baseUrl: arg.baseUrl || '',
+                apiKey: arg.apiKey || '',
+                model: arg.model || '',
+                format: arg.format || 'openai-chat',
+                requestTemplate: arg.requestTemplate || '',
+                responsePath: arg.responsePath || 'choices.0.message.content',
+                extraHeaders: arg.extraHeaders || '',
+                fixTags: false
+            };
+            let translator: CustomAITranslator = new CustomAITranslator(config);
+            translator.setSourceLanguage(Swordfish.currentPreferences.srcLang !== 'none' ? Swordfish.currentPreferences.srcLang : 'en');
+            translator.setTargetLanguage(Swordfish.currentPreferences.tgtLang !== 'none' ? Swordfish.currentPreferences.tgtLang : 'zh');
+            let sample: string = await translator.testConnection();
+            event.sender.send('custom-ai-tested', { ok: true, sample: sample });
+        } catch (error: unknown) {
+            event.sender.send('custom-ai-tested', { ok: false, message: error instanceof Error ? error.message : t('unknownError') });
+        }
+    }
+
 
 }
 
