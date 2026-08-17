@@ -10,6 +10,8 @@
  *     Maxprograms - initial API and implementation
  *******************************************************************************/
 
+import { InlineSuggestPreferences } from "./inlineCompletion.js";
+
 export interface Preferences {
     theme: string;
     appLang: string;
@@ -112,4 +114,5 @@ export interface Preferences {
     os: string;
     showGuide: boolean;
     pageRows: number;
+    inlineSuggest: InlineSuggestPreferences;
 }

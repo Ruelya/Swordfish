@@ -13,6 +13,7 @@
 import { ipcRenderer, IpcRendererEvent } from "electron";
 import { defaultCustomAi } from "./customAITranslator.js";
 import { setAppLang, t } from "./i18n.js";
+import { InlineSuggestProvider, normalizeInlineSuggest } from "./inlineCompletion.js";
 import { Preferences } from "./preferences.js";
 import { Tab, TabHolder } from "./tabs.js";
 import { Language } from "typesbcp47";
@@ -107,6 +108,19 @@ export class PreferencesDialog {
     customAiResponsePath: HTMLInputElement = document.createElement('input');
     customAiHeaders: HTMLTextAreaElement = document.createElement('textarea');
     customAiFixTags: HTMLInputElement = document.createElement('input');
+
+    enableInlineSuggest: HTMLInputElement = document.createElement('input');
+    enableInlineAi: HTMLInputElement = document.createElement('input');
+    inlineSuggestDebounce: HTMLInputElement = document.createElement('input');
+    inlineSuggestProvider: HTMLSelectElement = document.createElement('select');
+    inlineSuggestModel: HTMLInputElement = document.createElement('input');
+    inlineSuggestApiKey: HTMLInputElement = document.createElement('input');
+    inlineSuggestBaseUrl: HTMLInputElement = document.createElement('input');
+    reuseProviderCredentials: HTMLInputElement = document.createElement('input');
+    inlineSuggestFormat: HTMLSelectElement = document.createElement('select');
+    inlineSuggestTemplate: HTMLTextAreaElement = document.createElement('textarea');
+    inlineSuggestResponsePath: HTMLInputElement = document.createElement('input');
+    inlineSuggestHeaders: HTMLTextAreaElement = document.createElement('textarea');
 
     defaultEnglish: HTMLSelectElement = document.createElement('select');
     defaultPortuguese: HTMLSelectElement = document.createElement('select');
@@ -427,6 +441,21 @@ export class PreferencesDialog {
             this.setCustomAiEnabled(this.enableCustomAi.checked);
         });
 
+        let inlineSuggest = normalizeInlineSuggest(preferences.inlineSuggest);
+        this.enableInlineSuggest.checked = inlineSuggest.enabled;
+        this.enableInlineAi.checked = inlineSuggest.aiEnabled;
+        this.inlineSuggestDebounce.value = String(inlineSuggest.debounceMs);
+        this.inlineSuggestProvider.value = inlineSuggest.provider;
+        this.inlineSuggestModel.value = inlineSuggest.model;
+        this.inlineSuggestApiKey.value = inlineSuggest.apiKey;
+        this.inlineSuggestBaseUrl.value = inlineSuggest.baseUrl;
+        this.reuseProviderCredentials.checked = inlineSuggest.reuseProviderCredentials;
+        this.inlineSuggestFormat.value = inlineSuggest.format || 'openai-chat';
+        this.inlineSuggestTemplate.value = inlineSuggest.requestTemplate;
+        this.inlineSuggestResponsePath.value = inlineSuggest.responsePath;
+        this.inlineSuggestHeaders.value = inlineSuggest.extraHeaders;
+        this.updateInlineSuggestFields();
+
         this.os = preferences.os;
         this.showGuide = preferences.showGuide;
         this.pageRows.value = preferences.pageRows.toString();
@@ -564,6 +593,32 @@ export class PreferencesDialog {
                 return;
             }
         }
+        if (this.enableInlineAi.checked && (this.inlineSuggestProvider.value === 'none' || this.inlineSuggestModel.value.trim() === '')) {
+            ipcRenderer.send('show-message', { type: 'warning', message: t('inlineSuggestNeedModel'), parent: 'preferences' });
+            return;
+        }
+        if (this.enableInlineAi.checked && !this.reuseProviderCredentials.checked) {
+            let provider: string = this.inlineSuggestProvider.value;
+            if (provider !== 'none' && provider !== 'ollama' && provider !== 'custom' && this.inlineSuggestApiKey.value.trim() === '') {
+                ipcRenderer.send('show-message', { type: 'warning', message: t('inlineSuggestNeedKey'), parent: 'preferences' });
+                return;
+            }
+            if ((provider === 'ollama' || provider === 'custom') && this.inlineSuggestBaseUrl.value.trim() === '') {
+                ipcRenderer.send('show-message', { type: 'warning', message: t('inlineSuggestNeedUrl'), parent: 'preferences' });
+                return;
+            }
+        }
+        if (this.inlineSuggestHeaders.value.trim() !== '') {
+            try {
+                let headers: unknown = JSON.parse(this.inlineSuggestHeaders.value);
+                if (!headers || typeof headers !== 'object' || Array.isArray(headers)) {
+                    throw new Error('invalid');
+                }
+            } catch (_error) {
+                ipcRenderer.send('show-message', { type: 'warning', message: t('invalidExtraHeaders'), parent: 'preferences' });
+                return;
+            }
+        }
 
         let prefs: Preferences = {
             srcLang: this.srcLangSelect.value,
@@ -666,7 +721,21 @@ export class PreferencesDialog {
             },
             os: this.os,
             showGuide: this.showGuide,
-            pageRows: this.pageRows.valueAsNumber
+            pageRows: this.pageRows.valueAsNumber,
+            inlineSuggest: normalizeInlineSuggest({
+                enabled: this.enableInlineSuggest.checked,
+                aiEnabled: this.enableInlineAi.checked,
+                debounceMs: this.inlineSuggestDebounce.valueAsNumber,
+                provider: this.inlineSuggestProvider.value as InlineSuggestProvider,
+                model: this.inlineSuggestModel.value.trim(),
+                apiKey: this.inlineSuggestApiKey.value,
+                baseUrl: this.inlineSuggestBaseUrl.value.trim(),
+                format: this.inlineSuggestFormat.value as any,
+                requestTemplate: this.inlineSuggestTemplate.value,
+                responsePath: this.inlineSuggestResponsePath.value.trim(),
+                extraHeaders: this.inlineSuggestHeaders.value,
+                reuseProviderCredentials: this.reuseProviderCredentials.checked
+            })
         }
         if (this.os !== 'darwin') {
             prefs.spellchecker = {
@@ -1688,11 +1757,39 @@ export class PreferencesDialog {
         customAiRadio.addEventListener('change', () => {
             this.toggleTab('customAiTab');
         });
+
+        radioRow = document.createElement('div');
+        radioRow.classList.add('row');
+        radioRow.classList.add('middle');
+        leftSide.appendChild(radioRow);
+
+        let inlineSuggestRadio: HTMLInputElement = document.createElement('input');
+        inlineSuggestRadio.type = 'radio';
+        inlineSuggestRadio.name = 'mtProvider';
+        inlineSuggestRadio.id = 'inlineSuggestRadio';
+        inlineSuggestRadio.style.margin = '4px';
+        radioRow.appendChild(inlineSuggestRadio);
+
+        let inlineSuggestLabel: HTMLLabelElement = document.createElement('label');
+        inlineSuggestLabel.setAttribute('for', 'inlineSuggestRadio');
+        inlineSuggestLabel.innerText = t('inlineSuggest');
+        inlineSuggestLabel.style.marginTop = '4px';
+        radioRow.appendChild(inlineSuggestLabel);
+
+        let inlineSuggestTab: HTMLDivElement = document.createElement('div');
+        inlineSuggestTab.id = 'inlineSuggestTab';
+        inlineSuggestTab.style.display = 'none';
+        rightSide.appendChild(inlineSuggestTab);
+        this.populateInlineSuggestTab(inlineSuggestTab);
+
+        inlineSuggestRadio.addEventListener('change', () => {
+            this.toggleTab('inlineSuggestTab');
+        });
     }
 
     toggleTab(tabId: string): void {
         const tabs: string[] = ['googleTab', 'azureTab', 'deeplTab',
-            'chatGptTab', 'mistralTab', 'qwenTab', 'ollamaTab', 'anthropicTab', 'geminiTab', 'modernmtTab', 'customAiTab'];
+            'chatGptTab', 'mistralTab', 'qwenTab', 'ollamaTab', 'anthropicTab', 'geminiTab', 'modernmtTab', 'customAiTab', 'inlineSuggestTab'];
         tabs.forEach((id) => {
             const tab = document.getElementById(id);
             if (tab) {
@@ -2605,6 +2702,153 @@ export class PreferencesDialog {
         });
     }
 
+    populateInlineSuggestTab(container: HTMLDivElement): void {
+        container.style.paddingTop = '10px';
+
+        let addCheck = (input: HTMLInputElement, id: string, labelText: string): void => {
+            let row: HTMLDivElement = document.createElement('div');
+            row.classList.add('middle');
+            row.classList.add('row');
+            row.style.paddingLeft = '4px';
+            input.type = 'checkbox';
+            input.id = id;
+            row.appendChild(input);
+            let label: HTMLLabelElement = document.createElement('label');
+            label.setAttribute('for', id);
+            label.style.paddingTop = '4px';
+            label.innerText = labelText;
+            row.appendChild(label);
+            container.appendChild(row);
+        };
+        addCheck(this.enableInlineSuggest, 'enableInlineSuggest', t('enableInlineSuggest'));
+        addCheck(this.enableInlineAi, 'enableInlineAi', t('enableInlineAi'));
+        addCheck(this.reuseProviderCredentials, 'reuseProviderCredentials', t('reuseProviderCredentials'));
+
+        let table: HTMLTableElement = document.createElement('table');
+        table.classList.add('fill_width');
+        container.appendChild(table);
+        let addRow = (labelText: string, control: HTMLElement): void => {
+            let tr: HTMLTableRowElement = document.createElement('tr');
+            table.appendChild(tr);
+            let td: HTMLTableCellElement = document.createElement('td');
+            td.classList.add('middle');
+            td.classList.add('noWrap');
+            td.innerText = labelText;
+            tr.appendChild(td);
+            td = document.createElement('td');
+            td.classList.add('middle');
+            td.classList.add('fill_width');
+            td.appendChild(control);
+            tr.appendChild(td);
+        };
+
+        this.inlineSuggestDebounce.type = 'number';
+        this.inlineSuggestDebounce.min = '100';
+        this.inlineSuggestDebounce.max = '2000';
+        this.inlineSuggestDebounce.step = '50';
+        this.inlineSuggestDebounce.style.width = '72px';
+        addRow(t('inlineSuggestDebounce'), this.inlineSuggestDebounce);
+
+        this.inlineSuggestProvider.classList.add('table_select');
+        this.inlineSuggestProvider.innerHTML =
+            '<option value="none">' + t('inlineSuggestNone') + '</option>' +
+            '<option value="chatGpt">ChatGPT</option>' +
+            '<option value="anthropic">Claude</option>' +
+            '<option value="mistral">Mistral</option>' +
+            '<option value="gemini">Gemini</option>' +
+            '<option value="qwen">Qwen</option>' +
+            '<option value="ollama">Ollama</option>' +
+            '<option value="custom">' + t('customAi') + '</option>';
+        addRow(t('inlineSuggestProvider'), this.inlineSuggestProvider);
+
+        this.inlineSuggestModel.classList.add('table_input');
+        this.inlineSuggestModel.setAttribute('list', 'inlineSuggestModelsList');
+        addRow(t('inlineSuggestModel'), this.inlineSuggestModel);
+        let datalist: HTMLDataListElement = document.createElement('datalist');
+        datalist.id = 'inlineSuggestModelsList';
+        container.appendChild(datalist);
+
+        this.inlineSuggestApiKey.classList.add('table_input');
+        addRow(t('inlineSuggestApiKey'), this.inlineSuggestApiKey);
+
+        this.inlineSuggestBaseUrl.classList.add('table_input');
+        this.inlineSuggestBaseUrl.placeholder = 'https://api.openai.com/v1';
+        addRow(t('inlineSuggestBaseUrl'), this.inlineSuggestBaseUrl);
+
+        this.inlineSuggestFormat.classList.add('table_select');
+        this.inlineSuggestFormat.innerHTML =
+            '<option value="openai-chat">' + t('formatOpenAiChat') + '</option>' +
+            '<option value="openai-completions">' + t('formatOpenAiCompletions') + '</option>' +
+            '<option value="anthropic">' + t('formatAnthropic') + '</option>' +
+            '<option value="gemini">' + t('formatGemini') + '</option>' +
+            '<option value="ollama">' + t('formatOllama') + '</option>' +
+            '<option value="custom">' + t('formatCustom') + '</option>';
+        addRow(t('requestFormat'), this.inlineSuggestFormat);
+
+        this.inlineSuggestTemplate.classList.add('table_input');
+        this.inlineSuggestTemplate.rows = 4;
+        this.inlineSuggestTemplate.style.width = '100%';
+        addRow(t('requestTemplate'), this.inlineSuggestTemplate);
+
+        this.inlineSuggestResponsePath.classList.add('table_input');
+        addRow(t('responsePath'), this.inlineSuggestResponsePath);
+
+        this.inlineSuggestHeaders.classList.add('table_input');
+        this.inlineSuggestHeaders.rows = 2;
+        this.inlineSuggestHeaders.style.width = '100%';
+        addRow(t('extraHeaders'), this.inlineSuggestHeaders);
+
+        let hint: HTMLParagraphElement = document.createElement('p');
+        hint.className = 'hint';
+        hint.innerText = t('inlineSuggestHint');
+        container.appendChild(hint);
+
+        this.enableInlineAi.addEventListener('change', () => this.updateInlineSuggestFields());
+        this.inlineSuggestProvider.addEventListener('change', () => this.updateInlineSuggestFields());
+        this.reuseProviderCredentials.addEventListener('change', () => this.updateInlineSuggestFields());
+    }
+
+    updateInlineSuggestFields(): void {
+        let aiOn: boolean = this.enableInlineAi.checked;
+        let provider: string = this.inlineSuggestProvider.value;
+        let custom: boolean = provider === 'custom';
+        this.inlineSuggestProvider.disabled = !aiOn;
+        this.inlineSuggestModel.disabled = !aiOn || provider === 'none';
+        this.inlineSuggestApiKey.disabled = !aiOn || provider === 'none' || provider === 'ollama';
+        this.inlineSuggestBaseUrl.disabled = !aiOn || provider === 'none';
+        this.reuseProviderCredentials.disabled = !aiOn || provider === 'none';
+        this.inlineSuggestFormat.disabled = !aiOn || !custom;
+        this.inlineSuggestTemplate.disabled = !aiOn || !custom;
+        this.inlineSuggestResponsePath.disabled = !aiOn || !custom;
+        this.inlineSuggestHeaders.disabled = !aiOn || !custom;
+        this.refreshInlineSuggestModels();
+    }
+
+    refreshInlineSuggestModels(): void {
+        let listId: string = 'inlineSuggestModelsList';
+        let provider: string = this.inlineSuggestProvider.value;
+        if (provider === 'chatGpt') {
+            this.copyModelList('chatGptModelsList', listId);
+        } else if (provider === 'anthropic') {
+            this.copyModelList('anthropicModelsList', listId);
+        } else if (provider === 'mistral') {
+            this.copyModelList('mistralModelsList', listId);
+        } else if (provider === 'gemini') {
+            this.copyModelList('geminiModelsList', listId);
+        } else if (provider === 'qwen') {
+            this.copyModelList('qwenModelsList', listId);
+        }
+    }
+
+    copyModelList(fromId: string, toId: string): void {
+        let from: HTMLDataListElement | null = document.getElementById(fromId) as HTMLDataListElement | null;
+        let to: HTMLDataListElement | null = document.getElementById(toId) as HTMLDataListElement | null;
+        if (!from || !to) {
+            return;
+        }
+        to.innerHTML = from.innerHTML;
+    }
+
     requestModelSuggestions(): void {
         if (this.modelSuggestionsLoaded || this.modelSuggestionsLoading) {
             return;
@@ -2621,6 +2865,7 @@ export class PreferencesDialog {
         this.populateModelList('mistralModelsList', models.Mistral);
         this.populateModelList('geminiModelsList', models.Gemini);
         this.populateModelList('qwenModelsList', models.Qwen);
+        this.refreshInlineSuggestModels();
     }
 
     populateModelList(listId: string, options?: string[]): void {

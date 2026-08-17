@@ -13,6 +13,7 @@
 import { ipcRenderer, IpcRendererEvent } from "electron";
 import { GlossariesView } from "./glossaries.js";
 import { setAppLang, t } from "./i18n.js";
+import { defaultInlineSuggest, InlineSuggestPreferences, normalizeInlineSuggest } from "./inlineCompletion.js";
 import { MemoriesView } from "./memories.js";
 import { MetaId } from "./metadata.js";
 import { Project } from "./project.js";
@@ -36,6 +37,7 @@ export class Main {
     glossariesView: GlossariesView;
 
     static rowsPage: number;
+    static inlineSuggest: InlineSuggestPreferences = defaultInlineSuggest();
 
     constructor() {
         setAppLang(ipcRenderer.sendSync('get-app-lang'));
@@ -93,6 +95,16 @@ export class Main {
         ipcRenderer.send('get-rows-page');
         ipcRenderer.on('set-rows-page', (event: IpcRendererEvent, rows: number) => {
             Main.rowsPage = rows;
+        });
+        ipcRenderer.send('get-inline-suggest');
+        ipcRenderer.on('set-inline-suggest', (_event: IpcRendererEvent, prefs: InlineSuggestPreferences) => {
+            Main.inlineSuggest = normalizeInlineSuggest(prefs);
+            for (let view of Main.translationViews.values()) {
+                view.setInlineSuggest(Main.inlineSuggest);
+            }
+        });
+        ipcRenderer.on('invoke-inline-ai', () => {
+            this.invokeInlineAi();
         });
         window.addEventListener('resize', () => {
             Main.resizePanels();
@@ -695,6 +707,13 @@ export class Main {
         let selected: string = Main.tabHolder.getSelected();
         if (Main.translationViews.has(selected)) {
             (Main.translationViews.get(selected) as TranslationView).cancelEdit();
+        }
+    }
+
+    invokeInlineAi(): void {
+        let selected: string = Main.tabHolder.getSelected();
+        if (Main.translationViews.has(selected)) {
+            (Main.translationViews.get(selected) as TranslationView).invokeInlineAi();
         }
     }
 

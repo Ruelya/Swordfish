@@ -32,6 +32,7 @@ import { Rect, Sizes } from "./windowSizes.js";
 import { setAppLang, t } from "./i18n.js";
 import { applyAlignedTargets, asTextPairs, buildAlignPrompt, buildTermsPrompt, chunkList, parseJsonPayload, safeFileName, segmentPlainTarget, stripHtml, TextPair, xmlTarget } from "./aiJsonTasks.js";
 import { CustomAITranslator, CustomAiConfig, defaultCustomAi } from "./customAITranslator.js";
+import { defaultInlineSuggest, INLINE_COMPLETION_SYSTEM, normalizeInlineSuggest, resolveInlineCompletionClient, sanitizeInlineCompletion } from "./inlineCompletion.js";
 
 export class Swordfish {
 
@@ -187,7 +188,8 @@ export class Swordfish {
         },
         os: process.platform,
         showGuide: true,
-        pageRows: 500
+        pageRows: 500,
+        inlineSuggest: defaultInlineSuggest()
     }
 
     static currentCss: string;
@@ -776,6 +778,15 @@ export class Swordfish {
         });
         ipcMain.on('get-terms', (event: IpcMainEvent, arg: any) => {
             Swordfish.getTerms(arg);
+        });
+        ipcMain.on('get-inline-suggest', (event: IpcMainEvent) => {
+            event.sender.send('set-inline-suggest', normalizeInlineSuggest(Swordfish.currentPreferences.inlineSuggest));
+        });
+        ipcMain.on('request-inline-completion', (event: IpcMainEvent, arg: any) => {
+            Swordfish.requestInlineCompletion(event, arg);
+        });
+        ipcMain.on('toggle-inline-suggest', () => {
+            Swordfish.toggleInlineSuggest();
         });
         ipcMain.on('get-segment-terms', (event: IpcMainEvent, arg: any) => {
             Swordfish.getSegmentTerms(arg);
@@ -1427,7 +1438,10 @@ export class Swordfish {
             { label: t('insertAiResponse'), accelerator: 'CmdOrCtrl+Shift+R', click: () => { Swordfish.insertAiResponse(); }, icon: join(app.getAppPath(), 'images', iconFolder, 'insertAIResponse.png') },
             new MenuItem({ type: 'separator' }),
             { label: t('aiPreTranslate'), accelerator: 'CmdOrCtrl+Shift+A', click: () => { Swordfish.mainWindow.webContents.send('request-ai-pretranslate'); } },
-            { label: t('aiLifecycle'), accelerator: 'CmdOrCtrl+Shift+L', click: () => { Swordfish.showAiLifecycle(); } }
+            { label: t('aiLifecycle'), accelerator: 'CmdOrCtrl+Shift+L', click: () => { Swordfish.showAiLifecycle(); } },
+            new MenuItem({ type: 'separator' }),
+            { label: t('toggleInlineSuggest'), type: 'checkbox', checked: normalizeInlineSuggest(Swordfish.currentPreferences.inlineSuggest).enabled, click: () => { Swordfish.toggleInlineSuggest(); } },
+            { label: t('invokeInlineAi'), accelerator: 'Alt+\\', click: () => { Swordfish.mainWindow.webContents.send('invoke-inline-ai'); } }
         ]);
         let helpMenu: Menu = Menu.buildFromTemplate([
             { label: t('userGuide'), accelerator: 'F1', click: () => { this.showHelp(); } },
@@ -1851,6 +1865,12 @@ export class Swordfish {
                     json.customAi = defaultCustomAi();
                     needsSaving = true;
                 }
+                if (!json.hasOwnProperty('inlineSuggest') || !json.inlineSuggest) {
+                    json.inlineSuggest = defaultInlineSuggest();
+                    needsSaving = true;
+                } else {
+                    json.inlineSuggest = normalizeInlineSuggest(json.inlineSuggest);
+                }
                 if (!json.hasOwnProperty('matchThreshold')) {
                     json.matchThreshold = 60;
                     needsSaving = true;
@@ -1923,6 +1943,7 @@ export class Swordfish {
         if (!Swordfish.currentPreferences.customAi) {
             Swordfish.currentPreferences.customAi = defaultCustomAi();
         }
+        Swordfish.currentPreferences.inlineSuggest = normalizeInlineSuggest(Swordfish.currentPreferences.inlineSuggest);
         setAppLang(Swordfish.currentPreferences.appLang);
     }
 
@@ -1953,6 +1974,7 @@ export class Swordfish {
         Swordfish.setTheme();
         Swordfish.createMenu();
         Swordfish.mainWindow.webContents.send('set-zoom', { zoom: Swordfish.currentPreferences.zoomFactor });
+        Swordfish.mainWindow.webContents.send('set-inline-suggest', normalizeInlineSuggest(Swordfish.currentPreferences.inlineSuggest));
         if (previousLang !== Swordfish.currentPreferences.appLang) {
             let fileUrl: URL = new URL('file://' + Swordfish.htmlPath('index.html'));
             Swordfish.mainWindow.loadURL(fileUrl.href);
@@ -7870,6 +7892,48 @@ export class Swordfish {
             Swordfish.mainWindow.webContents.send('set-status', '');
             if (Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
                 Swordfish.aiLifecycleWindow.webContents.send('lifecycle-finished');
+            }
+        }
+    }
+
+    static inlineCompletionRequestId: number = 0;
+
+    static toggleInlineSuggest(): void {
+        let current = normalizeInlineSuggest(Swordfish.currentPreferences.inlineSuggest);
+        current.enabled = !current.enabled;
+        Swordfish.currentPreferences.inlineSuggest = current;
+        writeFileSync(join(app.getPath('appData'), app.name, 'preferences.json'), JSON.stringify(Swordfish.currentPreferences, null, 2));
+        if (Swordfish.mainWindow && !Swordfish.mainWindow.isDestroyed()) {
+            Swordfish.mainWindow.webContents.send('set-inline-suggest', current);
+        }
+        Swordfish.createMenu();
+    }
+
+    static async requestInlineCompletion(event: IpcMainEvent, arg: any): Promise<void> {
+        let requestId: number = arg && typeof arg.requestId === 'number' ? arg.requestId : 0;
+        Swordfish.inlineCompletionRequestId = requestId;
+        try {
+            let resolved = resolveInlineCompletionClient(Swordfish.currentPreferences);
+            if (!resolved) {
+                event.sender.send('inline-completion-result', { requestId: requestId, text: '' });
+                return;
+            }
+            let translator: CustomAITranslator = new CustomAITranslator(resolved.config);
+            translator.setSourceLanguage(arg.srcLang || 'en');
+            translator.setTargetLanguage(arg.tgtLang || 'zh');
+            let raw: string = await translator.complete(arg.prompt || '', INLINE_COMPLETION_SYSTEM);
+            if (Swordfish.inlineCompletionRequestId !== requestId) {
+                return;
+            }
+            event.sender.send('inline-completion-result', {
+                requestId: requestId,
+                text: sanitizeInlineCompletion(raw, arg.prefix || ''),
+                model: resolved.model,
+                provider: resolved.provider
+            });
+        } catch (_error) {
+            if (Swordfish.inlineCompletionRequestId === requestId) {
+                event.sender.send('inline-completion-result', { requestId: requestId, text: '' });
             }
         }
     }
