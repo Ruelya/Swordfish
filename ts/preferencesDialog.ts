@@ -15,9 +15,9 @@ import { defaultCustomAi } from "./customAITranslator.js";
 import { setAppLang, t } from "./i18n.js";
 import { InlineSuggestProvider, normalizeInlineSuggest } from "./inlineCompletion.js";
 import { listEnabledEngineIds, reconcileSelectedEngines } from "./mtEngineSelection.js";
-import { Preferences } from "./preferences.js";
+import { LanguageOption } from "./languageLists.js";
+import { normalizeMatchThreshold, normalizePageRows, Preferences } from "./preferences.js";
 import { Tab, TabHolder } from "./tabs.js";
-import { Language } from "typesbcp47";
 
 export class PreferencesDialog {
 
@@ -155,38 +155,20 @@ export class PreferencesDialog {
         this.tabHolder = new TabHolder(document.getElementById('main') as HTMLDivElement, "preferencesHolder");
 
         let basicTab: Tab = new Tab('basicTab', t('basic'), false, this.tabHolder);
-        basicTab.getLabelDiv().addEventListener('click', () => {
-            setTimeout(() => {
-                ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
-            }, 200);
-        });
         this.tabHolder.addTab(basicTab);
         this.populateBasicTab(basicTab.getContainer());
 
         let mtTab: Tab = new Tab('mtTab', t('machineTranslation'), false, this.tabHolder);
         mtTab.getLabelDiv().addEventListener('click', () => {
             this.requestModelSuggestions();
-            setTimeout(() => {
-                ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
-            }, 200);
         });
         this.tabHolder.addTab(mtTab);
         this.populateMtTab(mtTab.getContainer());
 
         this.spellcheckTab = new Tab('spellcheckTab', t('spellchecker'), false, this.tabHolder);
-        this.spellcheckTab.getLabelDiv().addEventListener('click', () => {
-            setTimeout(() => {
-                ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
-            }, 200);
-        });
         this.tabHolder.addTab(this.spellcheckTab);
 
         let advancedTab: Tab = new Tab('advancedTab', t('advanced'), false, this.tabHolder);
-        advancedTab.getLabelDiv().addEventListener('click', () => {
-            setTimeout(() => {
-                ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
-            }, 200);
-        });
         this.tabHolder.addTab(advancedTab);
         this.populateAdvancedTab(advancedTab.getContainer());
 
@@ -269,9 +251,6 @@ export class PreferencesDialog {
         ipcRenderer.on('xmlFilters', (event: IpcRendererEvent, arg: any) => {
             this.setFilters(arg);
         });
-        setTimeout(() => {
-            ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
-        }, 200);
     }
 
     setPreferences(preferences: Preferences): void {
@@ -293,7 +272,7 @@ export class PreferencesDialog {
         this.caseSensitiveTermSearches.checked = preferences.caseSensitiveSearches;
         this.caseSensitiveMatches.checked = preferences.caseSensitiveMatches;
         this.autoConfirm.checked = preferences.autoConfirm;
-        this.matchThreshold.value = preferences.matchThreshold.toString();
+        this.matchThreshold.value = normalizeMatchThreshold(preferences.matchThreshold).toString();
 
         this.enableGoogle.checked = preferences.google.enabled;
         this.googleKey.value = preferences.google.apiKey;
@@ -464,7 +443,7 @@ export class PreferencesDialog {
 
         this.os = preferences.os;
         this.showGuide = preferences.showGuide;
-        this.pageRows.value = preferences.pageRows.toString();
+        this.pageRows.value = normalizePageRows(preferences.pageRows).toString();
         this.loadedSelectedMtEngines = Array.isArray(preferences.selectedMtEngines) ? preferences.selectedMtEngines.slice() : [];
         this.loadedEnabledEngineIds = listEnabledEngineIds(preferences);
         this.syncMtNavFromEnables();
@@ -648,7 +627,7 @@ export class PreferencesDialog {
             caseSensitiveSearches: this.caseSensitiveTermSearches.checked,
             caseSensitiveMatches: this.caseSensitiveMatches.checked,
             autoConfirm: this.autoConfirm.checked,
-            matchThreshold: this.matchThreshold.valueAsNumber,
+            matchThreshold: normalizeMatchThreshold(this.matchThreshold.valueAsNumber),
             google: {
                 enabled: this.enableGoogle.checked,
                 apiKey: this.googleKey.value,
@@ -730,7 +709,7 @@ export class PreferencesDialog {
             },
             os: this.os,
             showGuide: this.showGuide,
-            pageRows: this.pageRows.valueAsNumber,
+            pageRows: normalizePageRows(this.pageRows.valueAsNumber),
             inlineSuggest: normalizeInlineSuggest({
                 enabled: this.enableInlineSuggest.checked,
                 aiEnabled: this.enableInlineAi.checked,
@@ -1083,20 +1062,10 @@ export class PreferencesDialog {
         let advHolder: TabHolder = new TabHolder(div, 'advHolder');
 
         let generalTab: Tab = new Tab('generalTab', 'General', false, advHolder);
-        generalTab.getLabelDiv().addEventListener('click', () => {
-            setTimeout(() => {
-                ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
-            }, 200);
-        });
         advHolder.addTab(generalTab);
         this.populateAdvGeneralTab(generalTab.getContainer());
 
         let xmlTab: Tab = new Tab('xmlTab', 'XML Filter', false, advHolder);
-        xmlTab.getLabelDiv().addEventListener('click', () => {
-            setTimeout(() => {
-                ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
-            }, 200);
-        });
         advHolder.addTab(xmlTab);
         this.populateXmlFilterTab(xmlTab.getContainer());
     }
@@ -2805,10 +2774,12 @@ export class PreferencesDialog {
         document.body.classList.remove("wait");
     }
 
-    getOptions(array: Language[]): string {
+    getOptions(array: LanguageOption[]): string {
         let languageOptions: string = '<option value="none">Select Language</option>';
-        for (let lang of array) {
-            languageOptions = languageOptions + '<option value="' + lang.code + '">' + lang.description + '</option>';
+        for (let lang of array || []) {
+            if (lang && lang.code) {
+                languageOptions = languageOptions + '<option value="' + lang.code + '">' + (lang.description || lang.code) + '</option>';
+            }
         }
         return languageOptions;
     }

@@ -1013,6 +1013,7 @@ export class TranslationView {
 
     close(): void {
         this.inlineSuggestController.dispose();
+        this.mtMatches?.dispose();
         this.rowsObserver?.disconnect();
         this.observer?.disconnect();
         ipcRenderer.send('close-notes');
@@ -2110,6 +2111,11 @@ export class TranslationView {
     }
 
     getMachineTranslations(): void {
+        if (!this.currentId.file || !this.currentId.unit || !this.currentId.id) {
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectSegment') });
+            return;
+        }
+        let selection: { selected?: string[] } = ipcRenderer.sendSync('get-mt-engine-selection');
         ipcRenderer.send('machine-translate', {
             project: this.projectId,
             file: this.currentId.file,
@@ -2117,6 +2123,7 @@ export class TranslationView {
             segment: this.currentId.id,
             srcLang: this.srcLang,
             tgtLang: this.tgtLang,
+            selectedMtEngines: selection?.selected,
             currentSegment: {
                 file: this.currentId.file,
                 unit: this.currentId.unit,
@@ -3143,8 +3150,13 @@ export class TranslationView {
             unit: this.currentId.unit,
             id: this.currentId.id
         }
+        let selection: { selected?: string[] } = ipcRenderer.sendSync('get-mt-engine-selection');
         ipcRenderer.send('apply-mt-all', {
-            project: this.projectId, srcLang: this.srcLang, tgtLang: this.tgtLang, currentSegment: {
+            project: this.projectId,
+            srcLang: this.srcLang,
+            tgtLang: this.tgtLang,
+            selectedMtEngines: selection?.selected,
+            currentSegment: {
                 file: this.currentId.file,
                 unit: this.currentId.unit,
                 id: this.currentId.id
@@ -3183,7 +3195,11 @@ export class TranslationView {
             unit: this.currentId.unit,
             id: this.currentId.id
         }
-        ipcRenderer.send('accept-mt-all', { project: this.projectId });
+        let selection: { selected?: string[] } = ipcRenderer.sendSync('get-mt-engine-selection');
+        ipcRenderer.send('accept-mt-all', {
+            project: this.projectId,
+            selectedMtEngines: selection?.selected
+        });
     }
 
     setProjectGlossaries(arg: any): void {

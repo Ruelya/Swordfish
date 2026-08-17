@@ -11,6 +11,8 @@
  *******************************************************************************/
 
 import { applyAlignedTargets, asTextPairs, basenameKey, parseJsonPayload, pairByBasename, safeFileName, segmentPlainTarget, stripHtml, xmlTarget } from "./aiJsonTasks.js";
+import { bcp47NameLocale, describeLanguage, describeLanguageOption, loadCommonLanguages } from "./languageLists.js";
+import { coerceInt, normalizeMatchThreshold, normalizePageRows } from "./preferences.js";
 import { applyTemplate, defaultCustomAi, extractByPath, joinUrl, normalizeTranslation, parseJsonHeaders } from "./customAITranslator.js";
 import {
     engineShortName,
@@ -177,5 +179,30 @@ assert(engineShortName('customAi', enginePrefs) === 'My LLM', 'custom short name
 assert(preferredMtOrigin(enginePrefs, ['deepl', 'chatGpt']) === 'DeepL', 'preferred origin first selected');
 let reconciled = reconcileSelectedEngines(enginePrefs, ['chatGpt'], ['chatGpt']);
 assert(reconciled.includes('chatGpt') && reconciled.includes('google') && reconciled.includes('deepl') && reconciled.includes('customAi'), 'reconcile keeps old and adds new');
+
+assert(bcp47NameLocale('zh') === 'en', 'zh UI language maps to typesbcp47 en list');
+assert(bcp47NameLocale('zh-CN') === 'en', 'zh-CN maps to en list');
+assert(bcp47NameLocale('en') === 'en', 'en stays en');
+assert(bcp47NameLocale('es-MX') === 'es', 'es-MX maps to es');
+let zhLangs = loadCommonLanguages('zh');
+assert(zhLangs.length > 0, 'zh common languages do not throw');
+assert(zhLangs.some((language) => language.code === 'zh' && language.description === '中文'), 'zh overlay name');
+assert(zhLangs.some((language) => language.code === 'en' && language.description === '英语'), 'en overlay name');
+assert(describeLanguage('zh', 'zh') !== undefined, 'describeLanguage zh locale does not throw');
+assert(describeLanguage('en-US', 'zh-CN') !== undefined, 'describeLanguage en-US with zh-CN UI');
+let zhOption = describeLanguageOption('ja', 'zh');
+assert(zhOption !== undefined && zhOption.description === '日语', 'describeLanguageOption applies zh overlay');
+assert(normalizeMatchThreshold(null) === 60, 'null matchThreshold');
+assert(normalizeMatchThreshold(undefined) === 60, 'undefined matchThreshold');
+assert(normalizeMatchThreshold('') === 60, 'empty matchThreshold');
+assert(normalizeMatchThreshold(Number.NaN) === 60, 'NaN matchThreshold');
+assert(normalizeMatchThreshold(0) === 0, 'zero matchThreshold stays zero');
+assert(normalizeMatchThreshold(75) === 75, 'valid matchThreshold');
+assert(normalizeMatchThreshold(140) === 100, 'clamp matchThreshold');
+assert(normalizePageRows(undefined) === 500, 'missing pageRows');
+assert(coerceInt('40', 60, 0, 100) === 40, 'coerceInt string');
+assert(t('selectSegment') === 'Select a segment', 'en selectSegment');
+setAppLang('zh');
+assert(t('selectSegment') === '请先选择句段', 'zh selectSegment');
 
 console.log('unit checks passed');

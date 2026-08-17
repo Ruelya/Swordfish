@@ -59,6 +59,7 @@ export class InlineSuggestController {
 
     private inputHandler: () => void = () => this.onInput();
     private keyHandler: (event: KeyboardEvent) => void = (event: KeyboardEvent) => this.onKeyDown(event);
+    private caretMoveHandler: () => void = () => this.onCaretMove();
     private scrollHandler: () => void = () => this.reposition();
     private resultHandler: (event: IpcRendererEvent, arg: any) => void = (_event: IpcRendererEvent, arg: any) => this.onAiResult(arg);
 
@@ -103,6 +104,8 @@ export class InlineSuggestController {
         this.cell = cell;
         cell.addEventListener('input', this.inputHandler);
         cell.addEventListener('keyup', this.inputHandler);
+        cell.addEventListener('mouseup', this.caretMoveHandler);
+        cell.addEventListener('click', this.caretMoveHandler);
         cell.addEventListener('keydown', this.keyHandler, true);
         this.refreshLocal(false);
         this.scheduleAi();
@@ -114,6 +117,8 @@ export class InlineSuggestController {
         if (this.cell) {
             this.cell.removeEventListener('input', this.inputHandler);
             this.cell.removeEventListener('keyup', this.inputHandler);
+            this.cell.removeEventListener('mouseup', this.caretMoveHandler);
+            this.cell.removeEventListener('click', this.caretMoveHandler);
             this.cell.removeEventListener('keydown', this.keyHandler, true);
         }
         this.cell = undefined;
@@ -189,6 +194,13 @@ export class InlineSuggestController {
         }
         this.clearTimer();
         this.fetchAi();
+    }
+
+    private onCaretMove(): void {
+        if (!this.prefs.enabled || !this.cell) {
+            return;
+        }
+        this.refreshLocal(false);
     }
 
     private onInput(): void {
@@ -361,22 +373,74 @@ export class InlineSuggestController {
         return { prefix: before.toString(), suffix: after.toString() };
     }
 
-    private caretRect(): DOMRect {
-        let selection: Selection | null = document.getSelection();
-        if (selection && selection.rangeCount > 0) {
-            let rects: DOMRectList = selection.getRangeAt(0).getClientRects();
-            if (rects.length > 0) {
-                return rects[0];
-            }
-            let rect: DOMRect = selection.getRangeAt(0).getBoundingClientRect();
-            if (rect.width > 0 || rect.height > 0) {
-                return rect;
+    private isUsableRect(rect: DOMRect): boolean {
+        return Number.isFinite(rect.left) && Number.isFinite(rect.top) && (rect.left !== 0 || rect.top !== 0 || rect.width > 0 || rect.height > 0);
+    }
+
+    private firstUsableRect(rects: DOMRectList): DOMRect | undefined {
+        for (let i: number = 0; i < rects.length; i++) {
+            if (this.isUsableRect(rects[i])) {
+                return rects[i];
             }
         }
+        return undefined;
+    }
+
+    private snapToCell(rect: DOMRect): DOMRect {
+        if (!this.cell) {
+            return rect;
+        }
+        let cell: DOMRect = this.cell.getBoundingClientRect();
+        let inside: boolean = rect.left >= cell.left - 8 && rect.left <= cell.right + 8
+            && rect.top >= cell.top - 8 && rect.top <= cell.bottom + 8;
+        if (inside && this.isUsableRect(rect)) {
+            return rect;
+        }
+        return cell;
+    }
+
+    private caretRect(): DOMRect {
         if (this.cell) {
+            let selection: Selection | null = document.getSelection();
+            if (selection && selection.rangeCount > 0 && this.cell.contains(selection.anchorNode)) {
+                let range: Range = selection.getRangeAt(0);
+                let fromList: DOMRect | undefined = this.firstUsableRect(range.getClientRects());
+                if (fromList) {
+                    return this.snapToCell(fromList);
+                }
+                let rect: DOMRect = range.getBoundingClientRect();
+                if (this.isUsableRect(rect)) {
+                    return this.snapToCell(rect);
+                }
+            }
+            let end: Range = document.createRange();
+            end.selectNodeContents(this.cell);
+            end.collapse(false);
+            let endFromList: DOMRect | undefined = this.firstUsableRect(end.getClientRects());
+            if (endFromList) {
+                return this.snapToCell(endFromList);
+            }
+            let endRect: DOMRect = end.getBoundingClientRect();
+            if (this.isUsableRect(endRect)) {
+                return this.snapToCell(endRect);
+            }
             return this.cell.getBoundingClientRect();
         }
         return new DOMRect(0, 0, 0, 0);
+    }
+
+    private clipToCell(left: number, top: number, width: number): { left: number; top: number; maxWidth: number } {
+        if (!this.cell) {
+            return { left: left, top: top, maxWidth: width };
+        }
+        let cell: DOMRect = this.cell.getBoundingClientRect();
+        let clippedLeft: number = Math.min(Math.max(left, cell.left + 2), Math.max(cell.left + 2, cell.right - 8));
+        let clippedTop: number = Math.min(Math.max(top, cell.top), Math.max(cell.top, cell.bottom - 12));
+        return {
+            left: clippedLeft,
+            top: clippedTop,
+            maxWidth: Math.max(32, cell.right - clippedLeft - 2)
+        };
     }
 
     private renderGhost(): void {
@@ -385,10 +449,12 @@ export class InlineSuggestController {
             return;
         }
         let rect: DOMRect = this.caretRect();
+        let clipped = this.clipToCell(rect.right || rect.left, rect.top, 240);
         this.ghostEl.textContent = this.ghost.text;
         this.ghostEl.style.display = 'block';
-        this.ghostEl.style.left = Math.max(0, rect.right) + 'px';
-        this.ghostEl.style.top = Math.max(0, rect.top) + 'px';
+        this.ghostEl.style.left = clipped.left + 'px';
+        this.ghostEl.style.top = clipped.top + 'px';
+        this.ghostEl.style.maxWidth = clipped.maxWidth + 'px';
         if (this.cell) {
             let style: CSSStyleDeclaration = window.getComputedStyle(this.cell);
             this.ghostEl.style.fontSize = style.fontSize;
@@ -418,9 +484,15 @@ export class InlineSuggestController {
             this.widgetEl.appendChild(row);
         }
         let rect: DOMRect = this.caretRect();
+        let clipped = this.clipToCell(rect.left, rect.bottom + 4, 220);
+        let left: number = Math.min(Math.max(8, clipped.left), window.innerWidth - 228);
+        let top: number = clipped.top;
+        if (top + 80 > window.innerHeight) {
+            top = Math.max(8, rect.top - 84);
+        }
         this.widgetEl.style.display = 'block';
-        this.widgetEl.style.left = Math.max(0, rect.left) + 'px';
-        this.widgetEl.style.top = (rect.bottom + 4) + 'px';
+        this.widgetEl.style.left = left + 'px';
+        this.widgetEl.style.top = top + 'px';
         this.widgetVisible = true;
     }
 

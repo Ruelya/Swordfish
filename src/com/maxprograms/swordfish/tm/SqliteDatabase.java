@@ -101,9 +101,8 @@ public class SqliteDatabase implements ITmEngine {
         } else {
             creationId = System.getProperty("user.name");
         }
-        if (json.has("matchThreshold")) {
-            matchThreshold = json.getInt("matchThreshold");
-        } else {
+        matchThreshold = TmsServer.optInt(json, "matchThreshold", 60);
+        if (matchThreshold < 0 || matchThreshold > 100) {
             matchThreshold = 60;
         }
         File wfolder = new File(workFolder);
