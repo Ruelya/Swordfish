@@ -473,7 +473,23 @@ const ZH: Record<string, string> = {
     enterPageAndPressEnter: '输入页码后按回车',
     enterRowsAndPressEnter: '输入每页行数后按回车',
     translationType: '翻译',
-    reviewType: '审校'
+    reviewType: '审校',
+    inlineSuggest: '行内补全',
+    enableInlineSuggest: '启用本地自动建议（术语 / 翻译记忆）',
+    enableInlineAi: '启用 AI 上下文续写',
+    inlineSuggestDebounce: 'AI 防抖（毫秒）',
+    inlineSuggestProvider: '补全模型供应商',
+    inlineSuggestModel: '补全模型',
+    inlineSuggestApiKey: '补全 API 密钥',
+    inlineSuggestBaseUrl: '补全 API 地址',
+    reuseProviderCredentials: '借用该供应商在机器翻译页的凭证（密钥 / 地址）',
+    toggleInlineSuggest: '切换行内补全',
+    invokeInlineAi: '手动请求 AI 续写',
+    inlineSuggestNone: '无（仅本地建议）',
+    inlineSuggestHint: '补全模型与机器翻译/整句 LLM 相互独立。可选用更小、更快的模型，也可完全自建接口。未选择供应商和模型时不会调用 AI。',
+    inlineSuggestNeedModel: '启用 AI 续写时请选择供应商并填写模型名称',
+    inlineSuggestNeedKey: '请填写补全 API 密钥，或勾选借用机器翻译页凭证',
+    inlineSuggestNeedUrl: '请填写补全 API 地址，或勾选借用机器翻译页凭证'
 };
 
 const EN: Record<string, string> = {
@@ -937,7 +953,23 @@ const EN: Record<string, string> = {
     enterPageAndPressEnter: 'Enter page number and press ENTER',
     enterRowsAndPressEnter: 'Enter number of rows/page and press ENTER',
     translationType: 'Translation',
-    reviewType: 'Review'
+    reviewType: 'Review',
+    inlineSuggest: 'Inline Suggest',
+    enableInlineSuggest: 'Enable local auto-suggest (terms / translation memory)',
+    enableInlineAi: 'Enable AI context completion',
+    inlineSuggestDebounce: 'AI debounce (ms)',
+    inlineSuggestProvider: 'Completion provider',
+    inlineSuggestModel: 'Completion model',
+    inlineSuggestApiKey: 'Completion API key',
+    inlineSuggestBaseUrl: 'Completion API URL',
+    reuseProviderCredentials: 'Reuse this provider’s credentials from the Machine Translation page',
+    toggleInlineSuggest: 'Toggle Inline Suggest',
+    invokeInlineAi: 'Request AI Completion',
+    inlineSuggestNone: 'None (local suggestions only)',
+    inlineSuggestHint: 'The completion model is independent from machine translation / full-segment LLMs. You can pick a smaller, faster model or a custom endpoint. AI is not called until a provider and model are set.',
+    inlineSuggestNeedModel: 'Select a provider and enter a model name to enable AI completion',
+    inlineSuggestNeedKey: 'Enter a completion API key, or reuse credentials from the Machine Translation page',
+    inlineSuggestNeedUrl: 'Enter a completion API URL, or reuse credentials from the Machine Translation page'
 };
 
 const CATALOGS: Record<AppLang, Record<string, string>> = { zh: ZH, en: EN };

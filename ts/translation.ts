@@ -13,6 +13,8 @@
 import { ipcRenderer, IpcRendererEvent } from "electron";
 import { ThreeHorizontalPanels, ThreeVerticalPanels } from "./divider.js";
 import { t } from "./i18n.js";
+import { InlineSuggestPreferences, plainTextFromHtml } from "./inlineCompletion.js";
+import { InlineSuggestController } from "./inlineSuggestController.js";
 import { Main } from "./Main.js";
 import { Match } from "./match.js";
 import { MetaId } from "./metadata.js";
@@ -20,6 +22,7 @@ import { MtMatches } from "./mtMatches.js";
 import { Segment } from "./segment.js";
 import { FullId, SegmentId } from "./segmentId.js";
 import { Tab } from "./tabs.js";
+import { Term } from "./term.js";
 import { TermsPanel } from "./termsPanel.js";
 import { TmMatches } from "./tmMatches.js";
 
@@ -158,6 +161,7 @@ export class TranslationView {
     notesVisible: boolean = false;
     commentsVisible: boolean = false;
     contextVisible: boolean = false;
+    inlineSuggestController: InlineSuggestController;
 
     constructor(tab: Tab, projectId: string, sourceLang: string, targetLang: string, rows: number) {
         this.container = tab.getContainer();
@@ -174,6 +178,21 @@ export class TranslationView {
         this.statistics = document.createElement('div');
 
         this.sourceTags = new Map<string, string>();
+        this.inlineSuggestController = new InlineSuggestController({
+            srcLang: this.srcLang,
+            tgtLang: this.tgtLang,
+            getSourceHtml: () => {
+                if (!this.currentRow) {
+                    return '';
+                }
+                let source: HTMLTableCellElement = this.currentRow.getElementsByClassName('source')[0] as HTMLTableCellElement;
+                return source ? source.innerHTML : '';
+            },
+            getNeighbors: () => this.getNeighborSegments(),
+            insertHtml: (html: string) => Main.insertHtmlAtSelection(html),
+            onInserted: () => this.changeListener()
+        });
+        this.inlineSuggestController.setPreferences(Main.inlineSuggest);
         this.topBar = document.createElement('div');
         this.topBar.className = 'toolbar';
         this.container.appendChild(this.topBar);
@@ -246,6 +265,29 @@ export class TranslationView {
         this.rightPanel.style.height = '100%';
 
         this.container.addEventListener('keydown', (event: KeyboardEvent) => {
+            if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                if (this.inlineSuggestController.accept()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
+            }
+            if (event.code === 'Space' && (event.ctrlKey || event.metaKey) && !event.altKey) {
+                event.preventDefault();
+                this.inlineSuggestController.invokeWidget();
+                return;
+            }
+            if (event.key === 'ArrowRight' && (event.ctrlKey || event.metaKey) && !event.altKey) {
+                if (this.inlineSuggestController.acceptWord()) {
+                    event.preventDefault();
+                    return;
+                }
+            }
+            if (event.code === 'Backslash' && event.altKey) {
+                event.preventDefault();
+                this.inlineSuggestController.requestAiNow();
+                return;
+            }
             if (event.key === 'PageDown' && !(event.ctrlKey || event.metaKey)) {
                 event.preventDefault();
                 this.gotoNext();
@@ -970,6 +1012,7 @@ export class TranslationView {
     }
 
     close(): void {
+        this.inlineSuggestController.dispose();
         this.rowsObserver?.disconnect();
         this.observer?.disconnect();
         ipcRenderer.send('close-notes');
@@ -2116,6 +2159,7 @@ export class TranslationView {
     }
 
     saveEdit(arg: any): void {
+        this.inlineSuggestController.dismiss();
         let confirm: boolean = arg.confirm;
         let next: string = arg.next;
         let currentTranslate: HTMLTableCellElement = this.currentRow?.getElementsByClassName('translate')[0] as HTMLTableCellElement;
@@ -2387,6 +2431,7 @@ export class TranslationView {
         let source: HTMLTableCellElement = this.currentRow.getElementsByClassName('source')[0] as HTMLTableCellElement;
         this.sourceTags = this.getTags(source);
 
+        this.inlineSuggestController.detach();
         this.currentCell = this.currentRow.getElementsByClassName('target')[0] as HTMLTableCellElement;
         this.currentCell.addEventListener('keyup', () => this.changeListener());
 
@@ -2397,6 +2442,7 @@ export class TranslationView {
         if (!currentTranslate.innerHTML.includes(TranslationView.LOCK_FRAGMENT)) {
             this.currentCell.contentEditable = 'true';
             this.currentCell.classList.add('editing');
+            this.inlineSuggestController.attach(this.currentCell);
         }
 
         this.tmMatches?.clear();
@@ -2484,9 +2530,45 @@ export class TranslationView {
     }
 
     cancelEdit(): void {
+        if (this.inlineSuggestController.dismiss()) {
+            return;
+        }
         if (this.currentCell) {
             this.currentCell.innerHTML = this.currentContent;
         }
+    }
+
+    setInlineSuggest(prefs: InlineSuggestPreferences): void {
+        this.inlineSuggestController.setPreferences(prefs);
+    }
+
+    invokeInlineAi(): void {
+        this.inlineSuggestController.requestAiNow();
+    }
+
+    getNeighborSegments(): { previous?: { source: string; target: string }; next?: { source: string; target: string } } {
+        let result: { previous?: { source: string; target: string }; next?: { source: string; target: string } } = {};
+        if (!this.currentRow) {
+            return result;
+        }
+        let previous: HTMLTableRowElement | null = this.currentRow.previousElementSibling as HTMLTableRowElement | null;
+        let next: HTMLTableRowElement | null = this.currentRow.nextElementSibling as HTMLTableRowElement | null;
+        if (previous) {
+            result.previous = this.rowPlainPair(previous);
+        }
+        if (next) {
+            result.next = this.rowPlainPair(next);
+        }
+        return result;
+    }
+
+    rowPlainPair(row: HTMLTableRowElement): { source: string; target: string } {
+        let source: HTMLTableCellElement = row.getElementsByClassName('source')[0] as HTMLTableCellElement;
+        let target: HTMLTableCellElement = row.getElementsByClassName('target')[0] as HTMLTableCellElement;
+        return {
+            source: source ? plainTextFromHtml(source.innerHTML) : '',
+            target: target ? plainTextFromHtml(target.innerHTML) : ''
+        };
     }
 
     getTags(element: HTMLTableCellElement): Map<string, string> {
@@ -2645,10 +2727,12 @@ export class TranslationView {
         if (max > 0 && this.currentRow) {
             (this.currentRow.getElementsByClassName('match')[0] as HTMLTableCellElement).innerHTML = max + '%';
         }
+        this.inlineSuggestController.setMatches(matches);
     }
 
-    setTerms(terms: any[]): void {
+    setTerms(terms: Term[]): void {
         this.termsPanel?.setTerms(terms);
+        this.inlineSuggestController.setTerms(terms);
     }
 
     setTarget(arg: any): void {
@@ -2665,6 +2749,7 @@ export class TranslationView {
                 targetCell.innerHTML = arg.target;
                 if (row === this.currentRow) {
                     this.currentCell = targetCell;
+                    this.inlineSuggestController.dismiss();
                 }
 
                 let stateCell: HTMLTableCellElement = row.getElementsByClassName('state')[0] as HTMLTableCellElement;
