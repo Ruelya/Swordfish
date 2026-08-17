@@ -7837,7 +7837,8 @@ export class Swordfish {
                 Swordfish.lifecycleStep('export', 'running', t('exportingTranslations'));
                 Swordfish.lifecycleLog(t('stepExport'));
                 Swordfish.assertNotCancelled();
-                let exportData: any = await Swordfish.sendRequestAsync('/projects/translations', { project: projectId, output: arg.exportFolder });
+                let exportOutput: string = await Swordfish.resolveLifecycleExportPath(projectId, arg.exportFolder);
+                let exportData: any = await Swordfish.sendRequestAsync('/projects/translations', { project: projectId, output: exportOutput });
                 if (exportData.status !== Swordfish.SUCCESS) {
                     throw new Error(exportData.reason || t('unknownErrorExport'));
                 }
@@ -7937,6 +7938,17 @@ export class Swordfish {
         translator.setSourceLanguage(srcLang);
         translator.setTargetLanguage(tgtLang);
         return translator;
+    }
+
+    static async resolveLifecycleExportPath(projectId: string, exportFolder: string): Promise<string> {
+        mkdirSync(exportFolder, { recursive: true });
+        let project: any = await Swordfish.sendRequestAsync('/projects/get', { project: projectId });
+        let files: any[] = project.files || [];
+        if (files.length === 1 && files[0].type !== 'DITA Map') {
+            let parsed: any = Swordfish.getSaveName(files[0], project.targetLang || project.tgtLang, !!project.review);
+            return join(exportFolder, basename(parsed.defaultPath));
+        }
+        return exportFolder;
     }
 
     static async createMemorySilent(name: string, project: string): Promise<string> {
