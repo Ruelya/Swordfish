@@ -633,8 +633,8 @@ export class ProjectsView {
                 return 0;
             }
             if (this.projectSortFielD === 'type') {
-                let a_type = a.review ? 'Review' : 'Translation';
-                let b_type = b.review ? 'Review' : 'Translation';
+                let a_type = a.review ? t('reviewType') : t('translationType');
+                let b_type = b.review ? t('reviewType') : t('translationType');
                 if (a_type < b_type) {
                     return this.projectSortAscending ? -1 : 1;
                 }
@@ -796,7 +796,7 @@ export class ProjectsView {
             td = document.createElement('td');
             td.classList.add('center');
             td.classList.add('list');
-            td.innerText = p.review ? 'Review' : 'Translation';
+            td.innerText = p.review ? t('reviewType') : t('translationType');
             tr.append(td);
 
             td = document.createElement('td');

@@ -454,7 +454,9 @@ const ZH: Record<string, string> = {
     emptyGlossaries: '还没有术语库',
     preferencesSavedReload: '界面语言已更改，主窗口将重新加载。',
     enterPageAndPressEnter: '输入页码后按回车',
-    enterRowsAndPressEnter: '输入每页行数后按回车'
+    enterRowsAndPressEnter: '输入每页行数后按回车',
+    translationType: '翻译',
+    reviewType: '审校'
 };
 
 const EN: Record<string, string> = {
@@ -899,7 +901,9 @@ const EN: Record<string, string> = {
     emptyGlossaries: 'No glossaries yet',
     preferencesSavedReload: 'Interface language changed. The main window will reload.',
     enterPageAndPressEnter: 'Enter page number and press ENTER',
-    enterRowsAndPressEnter: 'Enter number of rows/page and press ENTER'
+    enterRowsAndPressEnter: 'Enter number of rows/page and press ENTER',
+    translationType: 'Translation',
+    reviewType: 'Review'
 };
 
 const CATALOGS: Record<AppLang, Record<string, string>> = { zh: ZH, en: EN };

@@ -99,7 +99,7 @@ export class Main {
         });
         ipcRenderer.on('app-ready', (event: IpcRendererEvent, contentSize: number[]) => {
             Main.mainContainer.style.width = contentSize[0] + 'px';
-            Main.mainContainer.style.height = contentSize[1] + 'px';
+            Main.mainContainer.style.height = (contentSize[1] - TitleBar.reservedHeight()) + 'px';
         });
         ipcRenderer.on('view-projects', () => {
             Main.tabHolder.selectTab('projects');
