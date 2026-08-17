@@ -489,7 +489,14 @@ const ZH: Record<string, string> = {
     inlineSuggestHint: '补全模型与机器翻译/整句 LLM 相互独立。可选用更小、更快的模型，也可完全自建接口。未选择供应商和模型时不会调用 AI。',
     inlineSuggestNeedModel: '启用 AI 续写时请选择供应商并填写模型名称',
     inlineSuggestNeedKey: '请填写补全 API 密钥，或勾选借用机器翻译页凭证',
-    inlineSuggestNeedUrl: '请填写补全 API 地址，或勾选借用机器翻译页凭证'
+    inlineSuggestNeedUrl: '请填写补全 API 地址，或勾选借用机器翻译页凭证',
+    selectMtEngines: '选择翻译引擎',
+    selectMtEnginesHint: '可同时勾选多个 MT/LLM 引擎。获取翻译时会并行调用，并在面板中列出全部候选。',
+    mtCandidates: '候选译文',
+    acceptThisCandidate: '接受',
+    noMtEngineSelected: '请至少选择一个已启用的 MT/LLM 引擎。',
+    noMtCandidates: '暂无机器翻译候选',
+    mtEnginePicker: '本次调用的引擎'
 };
 
 const EN: Record<string, string> = {
@@ -969,7 +976,14 @@ const EN: Record<string, string> = {
     inlineSuggestHint: 'The completion model is independent from machine translation / full-segment LLMs. You can pick a smaller, faster model or a custom endpoint. AI is not called until a provider and model are set.',
     inlineSuggestNeedModel: 'Select a provider and enter a model name to enable AI completion',
     inlineSuggestNeedKey: 'Enter a completion API key, or reuse credentials from the Machine Translation page',
-    inlineSuggestNeedUrl: 'Enter a completion API URL, or reuse credentials from the Machine Translation page'
+    inlineSuggestNeedUrl: 'Enter a completion API URL, or reuse credentials from the Machine Translation page',
+    selectMtEngines: 'Select translation engines',
+    selectMtEnginesHint: 'You can enable multiple MT/LLM engines. Requests run in parallel and all results appear as candidates.',
+    mtCandidates: 'Translation candidates',
+    acceptThisCandidate: 'Accept',
+    noMtEngineSelected: 'Select at least one enabled MT/LLM engine.',
+    noMtCandidates: 'No machine translation candidates',
+    mtEnginePicker: 'Engines for this request'
 };
 
 const CATALOGS: Record<AppLang, Record<string, string>> = { zh: ZH, en: EN };

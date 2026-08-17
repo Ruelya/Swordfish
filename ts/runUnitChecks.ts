@@ -11,7 +11,14 @@
  *******************************************************************************/
 
 import { applyAlignedTargets, asTextPairs, basenameKey, parseJsonPayload, pairByBasename, safeFileName, segmentPlainTarget, stripHtml, xmlTarget } from "./aiJsonTasks.js";
-import { applyTemplate, extractByPath, joinUrl, normalizeTranslation, parseJsonHeaders } from "./customAITranslator.js";
+import { applyTemplate, defaultCustomAi, extractByPath, joinUrl, normalizeTranslation, parseJsonHeaders } from "./customAITranslator.js";
+import {
+    engineShortName,
+    listEnabledEngineIds,
+    normalizeSelectedEngines,
+    preferredMtOrigin,
+    reconcileSelectedEngines
+} from "./mtEngineSelection.js";
 import { catalogKeys, setAppLang, t } from "./i18n.js";
 import {
     buildInlineCompletionPrompt,
@@ -141,5 +148,34 @@ assert(ollamaResolved !== null && ollamaResolved.config.baseUrl === 'http://127.
 assert(shouldRequestAi(ranked.ghost, independent.inlineSuggest) === false, 'skip AI when high-confidence TM ghost');
 assert(shouldRequestAi(null, independent.inlineSuggest) === true, 'request AI when configured and no local ghost');
 assert(shouldRequestAi(null, defaultInlineSuggest()) === false, 'no AI when default aiEnabled false');
+
+setAppLang('zh');
+assert(t('selectMtEngines') === '选择翻译引擎', 'zh selectMtEngines');
+assert(t('noMtEngineSelected').length > 0, 'zh noMtEngineSelected');
+setAppLang('en');
+assert(t('selectMtEngines') === 'Select translation engines', 'en selectMtEngines');
+assert(t('mtEnginePicker') === 'Engines for this request', 'en mtEnginePicker');
+
+let enginePrefs = {
+    google: { enabled: true },
+    azure: { enabled: false },
+    deepl: { enabled: true },
+    chatGpt: { enabled: true },
+    anthropic: { enabled: false },
+    mistral: { enabled: false },
+    gemini: { enabled: false },
+    qwen: { enabled: false },
+    ollama: { enabled: false },
+    modernmt: { enabled: false },
+    customAi: { ...defaultCustomAi(), enabled: true, name: 'My LLM' }
+};
+assert(listEnabledEngineIds(enginePrefs).join(',') === 'google,deepl,chatGpt,customAi', 'listEnabledEngineIds');
+assert(normalizeSelectedEngines(enginePrefs, []).join(',') === 'google,deepl,chatGpt,customAi', 'empty selection falls back to enabled');
+assert(normalizeSelectedEngines(enginePrefs, ['chatGpt', 'azure', 'unknown']).join(',') === 'chatGpt', 'drop disabled and unknown ids');
+assert(engineShortName('google') === 'Google', 'google short name');
+assert(engineShortName('customAi', enginePrefs) === 'My LLM', 'custom short name');
+assert(preferredMtOrigin(enginePrefs, ['deepl', 'chatGpt']) === 'DeepL', 'preferred origin first selected');
+let reconciled = reconcileSelectedEngines(enginePrefs, ['chatGpt'], ['chatGpt']);
+assert(reconciled.includes('chatGpt') && reconciled.includes('google') && reconciled.includes('deepl') && reconciled.includes('customAi'), 'reconcile keeps old and adds new');
 
 console.log('unit checks passed');

@@ -14,6 +14,7 @@ import { ipcRenderer, IpcRendererEvent } from "electron";
 import { defaultCustomAi } from "./customAITranslator.js";
 import { setAppLang, t } from "./i18n.js";
 import { InlineSuggestProvider, normalizeInlineSuggest } from "./inlineCompletion.js";
+import { listEnabledEngineIds, reconcileSelectedEngines } from "./mtEngineSelection.js";
 import { Preferences } from "./preferences.js";
 import { Tab, TabHolder } from "./tabs.js";
 import { Language } from "typesbcp47";
@@ -130,6 +131,11 @@ export class PreferencesDialog {
     showGuide: boolean = false;
 
     pageRows: HTMLInputElement = document.createElement('input');
+
+    mtNavRows: Map<string, HTMLDivElement> = new Map();
+    mtNavChecks: Map<string, HTMLInputElement> = new Map();
+    loadedSelectedMtEngines: string[] = [];
+    loadedEnabledEngineIds: string[] = [];
 
     filtersTable: HTMLTableElement = document.createElement('table');
     selected: Map<string, string>;
@@ -459,6 +465,9 @@ export class PreferencesDialog {
         this.os = preferences.os;
         this.showGuide = preferences.showGuide;
         this.pageRows.value = preferences.pageRows.toString();
+        this.loadedSelectedMtEngines = Array.isArray(preferences.selectedMtEngines) ? preferences.selectedMtEngines.slice() : [];
+        this.loadedEnabledEngineIds = listEnabledEngineIds(preferences);
+        this.syncMtNavFromEnables();
         this.populateSpellcheckTab(this.spellcheckTab.getContainer(), preferences.spellchecker);
 
         ipcRenderer.send('preferences-set');
@@ -735,8 +744,10 @@ export class PreferencesDialog {
                 responsePath: this.inlineSuggestResponsePath.value.trim(),
                 extraHeaders: this.inlineSuggestHeaders.value,
                 reuseProviderCredentials: this.reuseProviderCredentials.checked
-            })
+            }),
+            selectedMtEngines: []
         }
+        prefs.selectedMtEngines = reconcileSelectedEngines(prefs, this.loadedSelectedMtEngines, this.loadedEnabledEngineIds);
         if (this.os !== 'darwin') {
             prefs.spellchecker = {
                 defaultEnglish: this.defaultEnglish.value,
@@ -1442,215 +1453,34 @@ export class PreferencesDialog {
         div.style.paddingBottom = '8px';
         container.appendChild(div);
 
+        let hint: HTMLParagraphElement = document.createElement('p');
+        hint.classList.add('hint');
+        hint.innerText = t('selectMtEnginesHint');
+        hint.style.margin = '0px 8px 8px 8px';
+        container.appendChild(hint);
+
         let verticalTabs: HTMLDivElement = document.createElement('div');
         verticalTabs.classList.add('row');
         container.appendChild(verticalTabs);
 
         let leftSide: HTMLDivElement = document.createElement('div');
+        leftSide.classList.add('mtEngineNav');
         leftSide.style.paddingLeft = '8px';
         leftSide.style.paddingBottom = '8px';
         verticalTabs.appendChild(leftSide);
 
-        let radioRow: HTMLDivElement = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let googleRadio: HTMLInputElement = document.createElement('input');
-        googleRadio.type = 'radio';
-        googleRadio.name = 'mtProvider';
-        googleRadio.id = 'googleRadio';
-        googleRadio.style.margin = '4px';
-        googleRadio.checked = true;
-        radioRow.appendChild(googleRadio);
-
-        let googleLabel: HTMLLabelElement = document.createElement('label');
-        googleLabel.setAttribute('for', 'googleRadio');
-        googleLabel.innerText = 'Google';
-        googleLabel.style.marginTop = '4px';
-        radioRow.appendChild(googleLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let azureRadio: HTMLInputElement = document.createElement('input');
-        azureRadio.type = 'radio';
-        azureRadio.name = 'mtProvider';
-        azureRadio.id = 'azureRadio';
-        azureRadio.style.margin = '4px';
-        radioRow.appendChild(azureRadio);
-
-        let azureLabel: HTMLLabelElement = document.createElement('label');
-        azureLabel.setAttribute('for', 'azureRadio');
-        azureLabel.innerText = 'Microsoft Azure';
-        azureLabel.style.marginTop = '4px';
-        azureLabel.style.whiteSpace = 'nowrap';
-        radioRow.appendChild(azureLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let deeplRadio: HTMLInputElement = document.createElement('input');
-        deeplRadio.type = 'radio';
-        deeplRadio.name = 'mtProvider';
-        deeplRadio.id = 'deeplRadio';
-        deeplRadio.style.margin = '4px';
-        radioRow.appendChild(deeplRadio);
-
-        let deeplLabel: HTMLLabelElement = document.createElement('label');
-        deeplLabel.setAttribute('for', 'deeplRadio');
-        deeplLabel.innerText = 'DeepL';
-        deeplLabel.style.marginTop = '4px';
-        radioRow.appendChild(deeplLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let chatGptRadio: HTMLInputElement = document.createElement('input');
-        chatGptRadio.type = 'radio';
-        chatGptRadio.name = 'mtProvider';
-        chatGptRadio.id = 'chatGptRadio';
-        chatGptRadio.style.margin = '4px';
-        radioRow.appendChild(chatGptRadio);
-
-        let chatGptLabel: HTMLLabelElement = document.createElement('label');
-        chatGptLabel.setAttribute('for', 'chatGptRadio');
-        chatGptLabel.innerText = 'ChatGPT';
-        chatGptLabel.style.marginTop = '4px';
-        radioRow.appendChild(chatGptLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let mistralRadio: HTMLInputElement = document.createElement('input');
-        mistralRadio.type = 'radio';
-        mistralRadio.name = 'mtProvider';
-        mistralRadio.id = 'mistralRadio';
-        mistralRadio.style.margin = '4px';
-        radioRow.appendChild(mistralRadio);
-
-        let mistralLabel: HTMLLabelElement = document.createElement('label');
-        mistralLabel.setAttribute('for', 'mistralRadio');
-        mistralLabel.innerText = 'Mistral';
-        mistralLabel.style.marginTop = '4px';
-        radioRow.appendChild(mistralLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let qwenRadio: HTMLInputElement = document.createElement('input');
-        qwenRadio.type = 'radio';
-        qwenRadio.name = 'mtProvider';
-        qwenRadio.id = 'qwenRadio';
-        qwenRadio.style.margin = '4px';
-        radioRow.appendChild(qwenRadio);
-
-        let qwenLabel: HTMLLabelElement = document.createElement('label');
-        qwenLabel.setAttribute('for', 'qwenRadio');
-        qwenLabel.innerText = 'Qwen';
-        qwenLabel.style.marginTop = '4px';
-        qwenLabel.classList.add('noWrap');
-        radioRow.appendChild(qwenLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let anthropicRadio: HTMLInputElement = document.createElement('input');
-        anthropicRadio.type = 'radio';
-        anthropicRadio.name = 'mtProvider';
-        anthropicRadio.id = 'anthropicRadio';
-        anthropicRadio.style.margin = '4px';
-        radioRow.appendChild(anthropicRadio);
-
-        let anthropicLabel: HTMLLabelElement = document.createElement('label');
-        anthropicLabel.setAttribute('for', 'anthropicRadio');
-        anthropicLabel.innerText = 'Claude';
-        anthropicLabel.style.marginTop = '4px';
-        radioRow.appendChild(anthropicLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let geminiRadio: HTMLInputElement = document.createElement('input');
-        geminiRadio.type = 'radio';
-        geminiRadio.name = 'mtProvider';
-        geminiRadio.id = 'geminiRadio';
-        geminiRadio.style.margin = '4px';
-        radioRow.appendChild(geminiRadio);
-
-        let geminiLabel: HTMLLabelElement = document.createElement('label');
-        geminiLabel.setAttribute('for', 'geminiRadio');
-        geminiLabel.innerText = 'Gemini';
-        geminiLabel.style.marginTop = '4px';
-        radioRow.appendChild(geminiLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let ollamaRadio: HTMLInputElement = document.createElement('input');
-        ollamaRadio.type = 'radio';
-        ollamaRadio.name = 'mtProvider';
-        ollamaRadio.id = 'ollamaRadio';
-        ollamaRadio.style.margin = '4px';
-        radioRow.appendChild(ollamaRadio);
-
-        let ollamaLabel: HTMLLabelElement = document.createElement('label');
-        ollamaLabel.setAttribute('for', 'ollamaRadio');
-        ollamaLabel.innerText = 'Ollama';
-        ollamaLabel.style.marginTop = '4px';
-        radioRow.appendChild(ollamaLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let modernmtRadio: HTMLInputElement = document.createElement('input');
-        modernmtRadio.type = 'radio';
-        modernmtRadio.name = 'mtProvider';
-        modernmtRadio.id = 'modernmtRadio';
-        modernmtRadio.style.margin = '4px';
-        radioRow.appendChild(modernmtRadio);
-
-        let modernmtLabel: HTMLLabelElement = document.createElement('label');
-        modernmtLabel.setAttribute('for', 'modernmtRadio');
-        modernmtLabel.innerText = 'ModernMT';
-        modernmtLabel.style.marginTop = '4px';
-        radioRow.appendChild(modernmtLabel);
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let customAiRadio: HTMLInputElement = document.createElement('input');
-        customAiRadio.type = 'radio';
-        customAiRadio.name = 'mtProvider';
-        customAiRadio.id = 'customAiRadio';
-        customAiRadio.style.margin = '4px';
-        radioRow.appendChild(customAiRadio);
-
-        let customAiLabel: HTMLLabelElement = document.createElement('label');
-        customAiLabel.setAttribute('for', 'customAiRadio');
-        customAiLabel.innerText = t('customAi');
-        customAiLabel.style.marginTop = '4px';
-        radioRow.appendChild(customAiLabel);
+        this.addMtEngineNav(leftSide, 'google', 'Google', 'googleTab');
+        this.addMtEngineNav(leftSide, 'azure', 'Microsoft Azure', 'azureTab');
+        this.addMtEngineNav(leftSide, 'deepl', 'DeepL', 'deeplTab');
+        this.addMtEngineNav(leftSide, 'chatGpt', 'ChatGPT', 'chatGptTab');
+        this.addMtEngineNav(leftSide, 'mistral', 'Mistral', 'mistralTab');
+        this.addMtEngineNav(leftSide, 'qwen', 'Qwen', 'qwenTab');
+        this.addMtEngineNav(leftSide, 'anthropic', 'Claude', 'anthropicTab');
+        this.addMtEngineNav(leftSide, 'gemini', 'Gemini', 'geminiTab');
+        this.addMtEngineNav(leftSide, 'ollama', 'Ollama', 'ollamaTab');
+        this.addMtEngineNav(leftSide, 'modernmt', 'ModernMT', 'modernmtTab');
+        this.addMtEngineNav(leftSide, 'customAi', t('customAi'), 'customAiTab');
+        this.addMtSettingsNav(leftSide, 'inlineSuggest', t('inlineSuggest'), 'inlineSuggestTab');
 
         let rightSide: HTMLDivElement = document.createElement('div');
         rightSide.classList.add('fill_width');
@@ -1724,66 +1554,137 @@ export class PreferencesDialog {
         rightSide.appendChild(customAiTab);
         this.populateCustomAiTab(customAiTab);
 
-        googleRadio.addEventListener('change', () => {
-            this.toggleTab('googleTab');
-        });
-        azureRadio.addEventListener('change', () => {
-            this.toggleTab('azureTab');
-        });
-        deeplRadio.addEventListener('change', () => {
-            this.toggleTab('deeplTab');
-        });
-        chatGptRadio.addEventListener('change', () => {
-            this.toggleTab('chatGptTab');
-        });
-        mistralRadio.addEventListener('change', () => {
-            this.toggleTab('mistralTab');
-        });
-        qwenRadio.addEventListener('change', () => {
-            this.toggleTab('qwenTab');
-        });
-        ollamaRadio.addEventListener('change', () => {
-            this.toggleTab('ollamaTab');
-        });
-        anthropicRadio.addEventListener('change', () => {
-            this.toggleTab('anthropicTab');
-        });
-        geminiRadio.addEventListener('change', () => {
-            this.toggleTab('geminiTab');
-        });
-        modernmtRadio.addEventListener('change', () => {
-            this.toggleTab('modernmtTab');
-        });
-        customAiRadio.addEventListener('change', () => {
-            this.toggleTab('customAiTab');
-        });
-
-        radioRow = document.createElement('div');
-        radioRow.classList.add('row');
-        radioRow.classList.add('middle');
-        leftSide.appendChild(radioRow);
-
-        let inlineSuggestRadio: HTMLInputElement = document.createElement('input');
-        inlineSuggestRadio.type = 'radio';
-        inlineSuggestRadio.name = 'mtProvider';
-        inlineSuggestRadio.id = 'inlineSuggestRadio';
-        inlineSuggestRadio.style.margin = '4px';
-        radioRow.appendChild(inlineSuggestRadio);
-
-        let inlineSuggestLabel: HTMLLabelElement = document.createElement('label');
-        inlineSuggestLabel.setAttribute('for', 'inlineSuggestRadio');
-        inlineSuggestLabel.innerText = t('inlineSuggest');
-        inlineSuggestLabel.style.marginTop = '4px';
-        radioRow.appendChild(inlineSuggestLabel);
-
         let inlineSuggestTab: HTMLDivElement = document.createElement('div');
         inlineSuggestTab.id = 'inlineSuggestTab';
         inlineSuggestTab.style.display = 'none';
         rightSide.appendChild(inlineSuggestTab);
         this.populateInlineSuggestTab(inlineSuggestTab);
 
-        inlineSuggestRadio.addEventListener('change', () => {
-            this.toggleTab('inlineSuggestTab');
+        this.bindMtNavEnable('google', this.enableGoogle);
+        this.bindMtNavEnable('azure', this.enableAzure);
+        this.bindMtNavEnable('deepl', this.enableDeepL);
+        this.bindMtNavEnable('chatGpt', this.enableChatGPT);
+        this.bindMtNavEnable('mistral', this.enableMistral);
+        this.bindMtNavEnable('qwen', this.enableQwen);
+        this.bindMtNavEnable('anthropic', this.enableAnthropic);
+        this.bindMtNavEnable('gemini', this.enableGemini);
+        this.bindMtNavEnable('ollama', this.enableOllama);
+        this.bindMtNavEnable('modernmt', this.enableModernmt);
+        this.bindMtNavEnable('customAi', this.enableCustomAi);
+        this.selectMtProviderTab('googleTab');
+    }
+
+    addMtEngineNav(parent: HTMLDivElement, id: string, label: string, tabId: string): void {
+        let row: HTMLDivElement = document.createElement('div');
+        row.classList.add('row');
+        row.classList.add('middle');
+        row.classList.add('mtEngineRow');
+        row.dataset.tabId = tabId;
+
+        let check: HTMLInputElement = document.createElement('input');
+        check.type = 'checkbox';
+        check.id = 'navEnable-' + id;
+        check.style.margin = '4px';
+        row.appendChild(check);
+
+        let lab: HTMLLabelElement = document.createElement('label');
+        lab.setAttribute('for', 'navEnable-' + id);
+        lab.innerText = label;
+        lab.style.marginTop = '4px';
+        lab.style.whiteSpace = 'nowrap';
+        row.appendChild(lab);
+
+        row.addEventListener('click', () => {
+            this.selectMtProviderTab(tabId);
+        });
+        parent.appendChild(row);
+        this.mtNavRows.set(id, row);
+        this.mtNavChecks.set(id, check);
+    }
+
+    addMtSettingsNav(parent: HTMLDivElement, id: string, label: string, tabId: string): void {
+        let row: HTMLDivElement = document.createElement('div');
+        row.classList.add('row');
+        row.classList.add('middle');
+        row.classList.add('mtEngineRow');
+        row.dataset.tabId = tabId;
+
+        let lab: HTMLLabelElement = document.createElement('label');
+        lab.innerText = label;
+        lab.style.margin = '4px';
+        lab.style.marginTop = '4px';
+        lab.style.whiteSpace = 'nowrap';
+        row.appendChild(lab);
+
+        row.addEventListener('click', () => {
+            this.selectMtProviderTab(tabId);
+        });
+        parent.appendChild(row);
+        this.mtNavRows.set(id, row);
+    }
+
+    bindMtNavEnable(id: string, enableInput: HTMLInputElement): void {
+        let check: HTMLInputElement | undefined = this.mtNavChecks.get(id);
+        if (!check) {
+            return;
+        }
+        check.addEventListener('change', () => {
+            if (enableInput.checked !== check.checked) {
+                enableInput.checked = check.checked;
+                enableInput.dispatchEvent(new Event('change'));
+            }
+            this.updateMtNavRow(id);
+        });
+        enableInput.addEventListener('change', () => {
+            check.checked = enableInput.checked;
+            this.updateMtNavRow(id);
+        });
+    }
+
+    syncMtNavFromEnables(): void {
+        let mapping: Array<[string, HTMLInputElement]> = [
+            ['google', this.enableGoogle],
+            ['azure', this.enableAzure],
+            ['deepl', this.enableDeepL],
+            ['chatGpt', this.enableChatGPT],
+            ['mistral', this.enableMistral],
+            ['qwen', this.enableQwen],
+            ['anthropic', this.enableAnthropic],
+            ['gemini', this.enableGemini],
+            ['ollama', this.enableOllama],
+            ['modernmt', this.enableModernmt],
+            ['customAi', this.enableCustomAi]
+        ];
+        for (let [id, input] of mapping) {
+            let check: HTMLInputElement | undefined = this.mtNavChecks.get(id);
+            if (check) {
+                check.checked = input.checked;
+            }
+            this.updateMtNavRow(id);
+        }
+    }
+
+    updateMtNavRow(id: string): void {
+        let row: HTMLDivElement | undefined = this.mtNavRows.get(id);
+        let check: HTMLInputElement | undefined = this.mtNavChecks.get(id);
+        if (!row) {
+            return;
+        }
+        if (check && check.checked) {
+            row.classList.add('mtEngineRowEnabled');
+        } else {
+            row.classList.remove('mtEngineRowEnabled');
+        }
+    }
+
+    selectMtProviderTab(tabId: string): void {
+        this.toggleTab(tabId);
+        this.mtNavRows.forEach((row: HTMLDivElement) => {
+            if (row.dataset.tabId === tabId) {
+                row.classList.add('mtEngineRowActive');
+            } else {
+                row.classList.remove('mtEngineRowActive');
+            }
         });
     }
 

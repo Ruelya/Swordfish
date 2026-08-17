@@ -33,6 +33,7 @@ import { setAppLang, t } from "./i18n.js";
 import { applyAlignedTargets, asTextPairs, buildAlignPrompt, buildTermsPrompt, chunkList, parseJsonPayload, safeFileName, segmentPlainTarget, stripHtml, TextPair, xmlTarget } from "./aiJsonTasks.js";
 import { CustomAITranslator, CustomAiConfig, defaultCustomAi } from "./customAITranslator.js";
 import { defaultInlineSuggest, INLINE_COMPLETION_SYSTEM, normalizeInlineSuggest, resolveInlineCompletionClient, sanitizeInlineCompletion } from "./inlineCompletion.js";
+import { listEnabledEngineIds, listEngineOptions, normalizeSelectedEngines, preferredMtOrigin } from "./mtEngineSelection.js";
 
 export class Swordfish {
 
@@ -189,7 +190,8 @@ export class Swordfish {
         os: process.platform,
         showGuide: true,
         pageRows: 500,
-        inlineSuggest: defaultInlineSuggest()
+        inlineSuggest: defaultInlineSuggest(),
+        selectedMtEngines: []
     }
 
     static currentCss: string;
@@ -379,7 +381,11 @@ export class Swordfish {
             Swordfish.closeAiPreTranslate();
         });
         ipcMain.on('get-ai-pretranslate-context', (event: IpcMainEvent) => {
-            event.sender.send('set-ai-pretranslate-context', Swordfish.preTranslateContext || {});
+            event.sender.send('set-ai-pretranslate-context', {
+                ...(Swordfish.preTranslateContext || {}),
+                engines: listEngineOptions(Swordfish.currentPreferences),
+                selectedMtEngines: normalizeSelectedEngines(Swordfish.currentPreferences, Swordfish.currentPreferences.selectedMtEngines)
+            });
         });
         ipcMain.on('run-ai-pretranslate', (event: IpcMainEvent, arg: any) => {
             Swordfish.runAiPreTranslate(arg);
@@ -781,6 +787,13 @@ export class Swordfish {
         });
         ipcMain.on('get-inline-suggest', (event: IpcMainEvent) => {
             event.sender.send('set-inline-suggest', normalizeInlineSuggest(Swordfish.currentPreferences.inlineSuggest));
+        });
+        ipcMain.on('get-mt-engine-selection', (event: IpcMainEvent) => {
+            event.returnValue = Swordfish.mtEngineSelectionPayload();
+        });
+        ipcMain.on('set-selected-mt-engines', (event: IpcMainEvent, selected: string[]) => {
+            Swordfish.persistSelectedMtEngines(selected);
+            event.sender.send('set-mt-engine-selection', Swordfish.mtEngineSelectionPayload());
         });
         ipcMain.on('request-inline-completion', (event: IpcMainEvent, arg: any) => {
             Swordfish.requestInlineCompletion(event, arg);
@@ -1874,6 +1887,12 @@ export class Swordfish {
                 if (!json.hasOwnProperty('matchThreshold')) {
                     json.matchThreshold = 60;
                     needsSaving = true;
+                }
+                if (!Array.isArray(json.selectedMtEngines)) {
+                    json.selectedMtEngines = listEnabledEngineIds(json);
+                    needsSaving = true;
+                } else {
+                    json.selectedMtEngines = normalizeSelectedEngines(json, json.selectedMtEngines);
                 }
                 Swordfish.currentPreferences = json;
                 if (!Swordfish.currentPreferences.projectsFolder || !existsSync(Swordfish.currentPreferences.projectsFolder) || needsSaving) {
@@ -5478,7 +5497,7 @@ export class Swordfish {
                                     }
                                     const runTranslation = async (): Promise<void> => {
                                         try {
-                                            let mtManager: MTManager = new MTManager(this.currentPreferences, arg.srcLang, arg.tgtLang);
+                                            let mtManager: MTManager = new MTManager(this.currentPreferences, arg.srcLang, arg.tgtLang, arg.selectedMtEngines);
                                             await mtManager.translateProject(arg.project, exportedFile, arg.currentSegment);
                                             unlinkSync(exportedFile);
                                             Swordfish.mainWindow.webContents.send('end-waiting');
@@ -5545,6 +5564,9 @@ export class Swordfish {
             if (selection.response === 0) {
                 Swordfish.mainWindow.webContents.send('start-waiting');
                 Swordfish.mainWindow.webContents.send('set-status', 'Accepting matches');
+                if (!arg.origin) {
+                    arg.origin = preferredMtOrigin(Swordfish.currentPreferences, arg.selectedMtEngines);
+                }
                 Swordfish.sendRequest('/projects/acceptAllMT', arg,
                     (data: any) => {
                         Swordfish.mainWindow.webContents.send('end-waiting');
@@ -7414,12 +7436,23 @@ export class Swordfish {
         return join(app.getAppPath(), 'html', 'en', file);
     }
 
-    static hasAnyMtEngine(): boolean {
-        let preferences: Preferences = Swordfish.currentPreferences;
-        return !!(preferences.google.enabled || preferences.azure.enabled || preferences.deepl.enabled
-            || preferences.chatGpt.enabled || preferences.anthropic.enabled || preferences.mistral.enabled
-            || preferences.gemini.enabled || preferences.qwen.enabled || preferences.ollama.enabled
-            || preferences.modernmt.enabled || (preferences.customAi && preferences.customAi.enabled));
+    static hasAnyMtEngine(selected?: string[]): boolean {
+        return normalizeSelectedEngines(Swordfish.currentPreferences, selected ?? Swordfish.currentPreferences.selectedMtEngines).length > 0;
+    }
+
+    static mtEngineSelectionPayload(): { options: ReturnType<typeof listEngineOptions>; selected: string[] } {
+        return {
+            options: listEngineOptions(Swordfish.currentPreferences),
+            selected: normalizeSelectedEngines(Swordfish.currentPreferences, Swordfish.currentPreferences.selectedMtEngines)
+        };
+    }
+
+    static persistSelectedMtEngines(selected: string[]): void {
+        Swordfish.currentPreferences.selectedMtEngines = normalizeSelectedEngines(Swordfish.currentPreferences, selected);
+        writeFileSync(join(app.getPath('appData'), app.name, 'preferences.json'), JSON.stringify(Swordfish.currentPreferences, null, 2));
+        if (Swordfish.mainWindow && !Swordfish.mainWindow.isDestroyed()) {
+            Swordfish.mainWindow.webContents.send('set-mt-engine-selection', Swordfish.mtEngineSelectionPayload());
+        }
     }
 
     static sendRequestAsync(url: string, params: any): Promise<any> {
@@ -7490,7 +7523,7 @@ export class Swordfish {
         this.aiPreTranslateWindow = new BrowserWindow({
             parent: this.mainWindow,
             width: 520,
-            height: 360,
+            height: 480,
             minimizable: false,
             maximizable: false,
             resizable: false,
@@ -7532,18 +7565,23 @@ export class Swordfish {
                 });
             }
             if (arg.thenAiTranslate) {
-                if (!Swordfish.hasAnyMtEngine()) {
+                if (!Swordfish.hasAnyMtEngine(arg.selectedMtEngines)) {
                     throw new Error(t('preTranslateNeedEngine'));
                 }
                 Swordfish.mainWindow.webContents.send('set-status', t('translating'));
                 await Swordfish.applyMtAllSilent({
                     project: arg.project,
                     srcLang: arg.srcLang,
-                    tgtLang: arg.tgtLang
+                    tgtLang: arg.tgtLang,
+                    selectedMtEngines: arg.selectedMtEngines
                 });
                 if (arg.autoAcceptAi) {
                     Swordfish.mainWindow.webContents.send('set-status', t('acceptingMatches'));
-                    await Swordfish.acceptAllMtSilent({ project: arg.project });
+                    await Swordfish.acceptAllMtSilent({
+                        project: arg.project,
+                        origin: preferredMtOrigin(Swordfish.currentPreferences, arg.selectedMtEngines),
+                        selectedMtEngines: arg.selectedMtEngines
+                    });
                 }
             }
             if (arg.autoConfirmAi) {
@@ -8213,7 +8251,7 @@ export class Swordfish {
             throw new Error(t('unableFindExported'));
         }
         Swordfish.mainWindow.webContents.send('set-status', t('translating'));
-        let mtManager: MTManager = new MTManager(Swordfish.currentPreferences, arg.srcLang, arg.tgtLang);
+        let mtManager: MTManager = new MTManager(Swordfish.currentPreferences, arg.srcLang, arg.tgtLang, arg.selectedMtEngines);
         await mtManager.translateProject(arg.project, exportedFile, arg.currentSegment);
         if (existsSync(exportedFile)) {
             unlinkSync(exportedFile);
@@ -8222,6 +8260,9 @@ export class Swordfish {
     }
 
     static async acceptAllMtSilent(arg: any): Promise<any> {
+        if (!arg.origin) {
+            arg.origin = preferredMtOrigin(Swordfish.currentPreferences, arg.selectedMtEngines);
+        }
         let data: any = await Swordfish.sendRequestAsync('/projects/acceptAllMT', arg);
         if (data.status !== Swordfish.SUCCESS) {
             throw new Error(data.reason || t('unknownError'));

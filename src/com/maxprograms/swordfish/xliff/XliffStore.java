@@ -4841,10 +4841,18 @@ public class XliffStore {
 	}
 
 	public void acceptAllMT() throws SQLException, SAXException, IOException, ParserConfigurationException {
+		acceptAllMT("");
+	}
+
+	public void acceptAllMT(String preferredOrigin)
+			throws SQLException, SAXException, IOException, ParserConfigurationException {
 		String sql = "SELECT file, unitId, segId, source FROM segments WHERE type='S' AND (state='initial' OR targetText='') AND translate='Y' ";
+		boolean hasPreferred = preferredOrigin != null && !preferredOrigin.isBlank();
+		String matchSql = hasPreferred
+				? "SELECT target FROM matches WHERE file=? AND unitId=? AND segId=? AND type='mt' ORDER BY CASE WHEN origin=? THEN 0 ELSE 1 END, origin LIMIT 1"
+				: "SELECT target FROM matches WHERE file=? AND unitId=? AND segId=? AND type='mt' ORDER BY origin LIMIT 1";
 		try (ResultSet rs = stmt.executeQuery(sql)) {
-			try (PreparedStatement mtMatches = conn.prepareStatement(
-					"SELECT target FROM matches WHERE file=? AND unitId=? AND segId=? AND type='mt' LIMIT 1")) {
+			try (PreparedStatement mtMatches = conn.prepareStatement(matchSql)) {
 				while (rs.next()) {
 					String file = rs.getString(1);
 					String unit = rs.getString(2);
@@ -4854,6 +4862,9 @@ public class XliffStore {
 					mtMatches.setString(1, file);
 					mtMatches.setString(2, unit);
 					mtMatches.setString(3, segment);
+					if (hasPreferred) {
+						mtMatches.setString(4, preferredOrigin);
+					}
 					try (ResultSet rs2 = mtMatches.executeQuery()) {
 						while (rs2.next()) {
 							Element source = XliffUtils.buildElement(src);
