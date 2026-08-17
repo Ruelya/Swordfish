@@ -208,6 +208,52 @@ tasks.register('copyUnix') {
     }
 }
 
+def resolveWindowsJmods = {
+    def prop = project.findProperty('windowsJmods')
+    if (prop) {
+        return file(prop)
+    }
+    if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+        return file(System.getProperty('java.home') + File.separator + 'jmods')
+    }
+    return null
+}
+
+tasks.register('windowsRuntime', Exec) {
+    dependsOn createJar
+    outputs.upToDateWhen { false }
+    description = 'Create a Windows jlink runtime image in dist-win/'
+    group = 'build'
+
+    doFirst {
+        def jmods = resolveWindowsJmods()
+        if (jmods == null || !jmods.directory) {
+            throw new GradleException('Windows jmods not found. Pass -PwindowsJmods=/path/to/windows-jdk/jmods (Temurin 25 ships jmods as a separate download).')
+        }
+        delete 'dist-win'
+        commandLine 'jlink',
+            '--module-path', "jars${File.pathSeparator}${jmods.absolutePath}",
+            '--add-modules', 'swordfish',
+            '--output', 'dist-win',
+            '--verbose'
+    }
+
+    // Overwritten in doFirst once the Windows jmods path is resolved.
+    commandLine 'jlink', '--version'
+
+    doLast {
+        def jrtFile = file('dist-win/lib/jrt-fs.jar')
+        if (jrtFile.exists()) {
+            delete jrtFile
+        }
+        def javaExe = file('dist-win/bin/java.exe')
+        if (!javaExe.exists()) {
+            throw new GradleException('windowsRuntime finished but dist-win/bin/java.exe was not created')
+        }
+        println "✓ Windows runtime image created: dist-win"
+    }
+}
+
 tasks.register('dist') {
     dependsOn copyWindows, copyUnix
     outputs.upToDateWhen { false }  // Always rebuild

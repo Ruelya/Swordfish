@@ -1,0 +1,43 @@
+name: Windows portable build
+
+on:
+  push:
+    branches:
+      - master
+      - 'cursor/**'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  package-windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Windows portable zip
+        run: bash scripts/package-windows.sh
+
+      - name: Upload Windows zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: Swordfish-windows-x64
+          path: release-win/*.zip
+          if-no-files-found: error
+          compression-level: 0

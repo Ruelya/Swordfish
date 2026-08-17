@@ -60,6 +60,23 @@ npm start
 
 to launch Swordfish.
 
+### Windows portable package
+
+On Linux or Windows, build a portable 64-bit zip (Electron + a Windows Java runtime):
+
+```bash
+npm install
+npm run package:win
+```
+
+The zip is written to `release-win/Swordfish-<version>-win32-x64.zip`. Unzip it on Windows and run `Swordfish.exe`.
+
+Cross-compilation from Linux downloads Temurin 25 Windows jmods (they are a separate Adoptium artifact) and uses `jlink` to produce `dist-win/bin/java.exe`. On Windows, pass nothing extra if your JDK still has a `jmods` directory, or install the Temurin 25 jmods package and run:
+
+```bash
+gradle windowsRuntime -PwindowsJmods=C:\path\to\jmods
+```
+
 ---
 
 ## Videos

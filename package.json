@@ -7,7 +7,8 @@
     "type": "module",
     "scripts": {
         "build": "tsc",
-        "start": "npm run build && electron ."
+        "start": "npm run build && electron .",
+        "package:win": "bash scripts/package-windows.sh"
     },
     "author": {
         "name": "Rodolfo M. Raya",
@@ -22,6 +23,7 @@
     },
     "devDependencies": {
         "electron": "^43.2.0",
+        "resedit": "^2.0.3",
         "typescript": "^6.0.3"
     },
     "dependencies": {
