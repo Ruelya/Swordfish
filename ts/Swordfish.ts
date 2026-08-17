@@ -30,6 +30,7 @@ import { CommentReply, ReviewComment } from "./reviewComments.js";
 import { FullId } from "./segmentId.js";
 import { Rect, Sizes } from "./windowSizes.js";
 import { setAppLang, t } from "./i18n.js";
+import { applyAlignedTargets, asTextPairs, buildAlignPrompt, buildTermsPrompt, chunkList, parseJsonPayload, safeFileName, segmentPlainTarget, stripHtml, TextPair, xmlTarget } from "./aiJsonTasks.js";
 import { CustomAITranslator, CustomAiConfig, defaultCustomAi } from "./customAITranslator.js";
 
 export class Swordfish {
@@ -63,8 +64,10 @@ export class Swordfish {
     static aiPreTranslateWindow: BrowserWindow;
     static aiLifecycleWindow: BrowserWindow;
     static lifecycleCancelled: boolean = false;
+    static lifecycleCurrentStep: string = 'prepare';
     static preTranslateContext: any = {};
     static lifecycleTypedFiles: any[] = [];
+    static lifecycleTypedTargetFiles: any[] = [];
     static notesWindow: BrowserWindow;
     static contextWindow: BrowserWindow;
     static addNoteWindow: BrowserWindow;
@@ -393,6 +396,9 @@ export class Swordfish {
         });
         ipcMain.on('lifecycle-select-files', (event: IpcMainEvent) => {
             Swordfish.lifecycleSelectFiles(event);
+        });
+        ipcMain.on('lifecycle-select-target-files', (event: IpcMainEvent) => {
+            Swordfish.lifecycleSelectTargetFiles(event);
         });
         ipcMain.on('lifecycle-browse-export', (event: IpcMainEvent) => {
             Swordfish.lifecycleBrowseExport(event);
@@ -7435,6 +7441,9 @@ export class Swordfish {
     }
 
     static lifecycleStep(id: string, state: string, detail?: string): void {
+        if (state === 'running') {
+            Swordfish.lifecycleCurrentStep = id;
+        }
         if (Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
             Swordfish.aiLifecycleWindow.webContents.send('lifecycle-step', { id: id, state: state, detail: detail });
         }
@@ -7538,7 +7547,7 @@ export class Swordfish {
         this.aiLifecycleWindow = new BrowserWindow({
             parent: this.mainWindow,
             width: 980,
-            height: 720,
+            height: 820,
             minimizable: false,
             maximizable: false,
             resizable: true,
@@ -7580,6 +7589,26 @@ export class Swordfish {
         }).then((value: OpenDialogReturnValue) => {
             if (!value.canceled) {
                 event.sender.send('lifecycle-files-selected', value.filePaths);
+            }
+        }).catch((error: Error) => {
+            Swordfish.showMessage({ type: 'error', message: error.message, parent: 'aiLifecycle' });
+        });
+    }
+
+    static lifecycleSelectTargetFiles(event: IpcMainEvent): void {
+        let extensions: string[] = ['inx', 'icml', 'idml', 'ditamap', 'dita', 'xml', 'html', 'htm', 'js', 'properties',
+            'json', 'md', 'mif', 'docx', 'xlsx', 'pptx', 'sxw', 'sxc', 'sxi', 'sxd', 'odt', 'ods', 'odp', 'odg', 'txt',
+            'po', 'pot', 'rc', 'resx', 'sdlxliff', 'srt', 'svg', 'sdlppx', 'ts', 'txml', 'vtt', 'vsdx', 'xlf', 'xliff', 'mqxliff', 'txlf'];
+        dialog.showOpenDialog(Swordfish.aiLifecycleWindow || Swordfish.mainWindow, {
+            title: t('selectTargetFiles'),
+            properties: ['openFile', 'multiSelections'],
+            filters: [
+                { name: t('files'), extensions: extensions },
+                { name: t('none'), extensions: ['*'] }
+            ]
+        }).then((value: OpenDialogReturnValue) => {
+            if (!value.canceled) {
+                event.sender.send('lifecycle-target-files-selected', value.filePaths);
             }
         }).catch((error: Error) => {
             Swordfish.showMessage({ type: 'error', message: error.message, parent: 'aiLifecycle' });
@@ -7652,6 +7681,26 @@ export class Swordfish {
                 Swordfish.lifecycleStep('open', 'skipped', t('skipped'));
             }
 
+            let generatedMemoryId: string = '';
+            let generatedGlossaryId: string = '';
+            if (arg.alignBilingual || arg.alignTerms || arg.generateGlossary) {
+                Swordfish.getLifecycleAi(arg.srcLang, arg.tgtLang);
+            }
+            if (arg.generateTm) {
+                generatedMemoryId = await Swordfish.createMemorySilent(arg.name + ' TM', arg.name);
+                await Swordfish.sendRequestAsync('/projects/setMemory', { project: projectId, memory: generatedMemoryId });
+            }
+
+            if (arg.alignBilingual && arg.targetFiles && arg.targetFiles.length > 0) {
+                Swordfish.lifecycleStep('align', 'running', t('running'));
+                Swordfish.lifecycleLog(t('stepAlign'));
+                Swordfish.assertNotCancelled();
+                let aligned: number = await Swordfish.alignBilingualFiles(projectId, arg);
+                Swordfish.lifecycleStep('align', 'done', t('alignedPairs', aligned));
+            } else {
+                Swordfish.lifecycleStep('align', 'skipped', t('skipped'));
+            }
+
             if (arg.memory && arg.memory !== 'none') {
                 Swordfish.lifecycleStep('tm', 'running', t('translatingProject'));
                 Swordfish.lifecycleLog(t('stepTm'));
@@ -7662,20 +7711,26 @@ export class Swordfish {
                 Swordfish.lifecycleStep('tm', 'skipped', t('skipped'));
             }
 
-            Swordfish.lifecycleStep('ai', 'running', t('translating'));
-            Swordfish.lifecycleLog(t('stepAi'));
-            Swordfish.assertNotCancelled();
-            if (!Swordfish.hasAnyMtEngine()) {
-                throw new Error(t('lifecycleNeedEngine'));
-            }
-            await Swordfish.applyMtAllSilent({ project: projectId, srcLang: arg.srcLang, tgtLang: arg.tgtLang });
-            Swordfish.lifecycleStep('ai', 'done', t('done'));
+            let remainingEmpty: number = await Swordfish.countEmptyTargets(projectId);
+            if (remainingEmpty > 0) {
+                Swordfish.lifecycleStep('ai', 'running', t('translating'));
+                Swordfish.lifecycleLog(t('stepAi'));
+                Swordfish.assertNotCancelled();
+                if (!Swordfish.hasAnyMtEngine()) {
+                    throw new Error(t('lifecycleNeedEngine'));
+                }
+                await Swordfish.applyMtAllSilent({ project: projectId, srcLang: arg.srcLang, tgtLang: arg.tgtLang });
+                Swordfish.lifecycleStep('ai', 'done', t('done'));
 
-            Swordfish.lifecycleStep('accept', 'running', t('acceptingMatches'));
-            Swordfish.lifecycleLog(t('stepAccept'));
-            Swordfish.assertNotCancelled();
-            await Swordfish.acceptAllMtSilent({ project: projectId });
-            Swordfish.lifecycleStep('accept', 'done', t('done'));
+                Swordfish.lifecycleStep('accept', 'running', t('acceptingMatches'));
+                Swordfish.lifecycleLog(t('stepAccept'));
+                Swordfish.assertNotCancelled();
+                await Swordfish.acceptAllMtSilent({ project: projectId });
+                Swordfish.lifecycleStep('accept', 'done', t('done'));
+            } else {
+                Swordfish.lifecycleStep('ai', 'skipped', t('skipped'));
+                Swordfish.lifecycleStep('accept', 'skipped', t('skipped'));
+            }
 
             if (arg.runQa) {
                 Swordfish.lifecycleStep('qa', 'running', t('running'));
@@ -7694,14 +7749,88 @@ export class Swordfish {
                 Swordfish.lifecycleStep('qa', 'skipped', t('skipped'));
             }
 
-            if (arg.confirmAfter) {
+            let confirmMemory: string = generatedMemoryId || arg.memory || 'none';
+            if (arg.confirmAfter || arg.generateTm) {
                 Swordfish.lifecycleStep('confirm', 'running', t('confirmingTranslations'));
                 Swordfish.lifecycleLog(t('stepConfirm'));
                 Swordfish.assertNotCancelled();
-                await Swordfish.confirmAllSilent({ project: projectId });
+                await Swordfish.confirmAllSilent({ project: projectId, memory: confirmMemory });
                 Swordfish.lifecycleStep('confirm', 'done', t('done'));
             } else {
                 Swordfish.lifecycleStep('confirm', 'skipped', t('skipped'));
+            }
+
+            if (arg.generateTm && generatedMemoryId) {
+                Swordfish.lifecycleStep('generateTm', 'running', t('running'));
+                Swordfish.lifecycleLog(t('stepGenerateTm'));
+                Swordfish.assertNotCancelled();
+                let tmxFolder: string = arg.exportFolder || Swordfish.currentPreferences.memoriesFolder;
+                mkdirSync(tmxFolder, { recursive: true });
+                let tmxPath: string = join(tmxFolder, safeFileName(arg.name) + '.tmx');
+                try {
+                    let exportData: any = await Swordfish.sendRequestAsync('/projects/exportTmx', { project: projectId, output: tmxPath });
+                    if (exportData.process) {
+                        await Swordfish.waitForProcess(exportData.process);
+                    }
+                    Swordfish.lifecycleLog(t('exportedTmx', tmxPath));
+                } catch (exportError: unknown) {
+                    Swordfish.lifecycleLog(exportError instanceof Error ? exportError.message : t('unknownError'));
+                }
+                Swordfish.mainWindow.webContents.send('request-memories');
+                Swordfish.lifecycleStep('generateTm', 'done', t('createdMemory', arg.name + ' TM'));
+            } else {
+                Swordfish.lifecycleStep('generateTm', 'skipped', t('skipped'));
+            }
+
+            let termPairs: TextPair[] = [];
+            if (arg.alignTerms || arg.generateGlossary) {
+                let bilingualPairs: TextPair[] = await Swordfish.collectBilingualPairs(projectId);
+                if (bilingualPairs.length === 0) {
+                    throw new Error(t('noBilingualPairs'));
+                }
+                if (arg.alignTerms) {
+                    Swordfish.lifecycleStep('alignTerms', 'running', t('running'));
+                    Swordfish.lifecycleLog(t('stepAlignTerms'));
+                    Swordfish.assertNotCancelled();
+                }
+                termPairs = await Swordfish.extractTermsWithAi(arg.srcLang, arg.tgtLang, bilingualPairs);
+                if (arg.alignTerms) {
+                    Swordfish.lifecycleStep('alignTerms', 'done', t('extractedTerms', termPairs.length));
+                } else {
+                    Swordfish.lifecycleStep('alignTerms', 'skipped', t('skipped'));
+                }
+            } else {
+                Swordfish.lifecycleStep('alignTerms', 'skipped', t('skipped'));
+            }
+
+            if (arg.generateGlossary) {
+                Swordfish.lifecycleStep('generateGlossary', 'running', t('running'));
+                Swordfish.lifecycleLog(t('stepGenerateGlossary'));
+                Swordfish.assertNotCancelled();
+                if (termPairs.length === 0) {
+                    throw new Error(t('noBilingualPairs'));
+                }
+                generatedGlossaryId = await Swordfish.createGlossarySilent(arg.name + ' TB', arg.name);
+                let stored: number = 0;
+                for (let pair of termPairs) {
+                    Swordfish.assertNotCancelled();
+                    await Swordfish.sendRequestAsync('/glossaries/addTerm', {
+                        glossary: generatedGlossaryId,
+                        sourceTerm: pair.source,
+                        targetTerm: pair.target,
+                        srcLang: arg.srcLang,
+                        tgtLang: arg.tgtLang
+                    });
+                    stored++;
+                }
+                let glossaryLink: any = await Swordfish.sendRequestAsync('/projects/setGlossary', { project: projectId, glossary: generatedGlossaryId });
+                if (glossaryLink.status && glossaryLink.status !== Swordfish.SUCCESS) {
+                    throw new Error(glossaryLink.reason || t('unknownError'));
+                }
+                Swordfish.mainWindow.webContents.send('request-glossaries');
+                Swordfish.lifecycleStep('generateGlossary', 'done', t('createdGlossary', arg.name + ' TB') + ' / ' + t('extractedTerms', stored));
+            } else {
+                Swordfish.lifecycleStep('generateGlossary', 'skipped', t('skipped'));
             }
 
             if (arg.exportAfter) {
@@ -7731,8 +7860,7 @@ export class Swordfish {
         } catch (error: unknown) {
             let message: string = error instanceof Error ? error.message : t('unknownError');
             Swordfish.lifecycleLog(message);
-            let failedStep: string = 'done';
-            Swordfish.lifecycleStep(failedStep, 'failed', message);
+            Swordfish.lifecycleStep(Swordfish.lifecycleCurrentStep || 'done', 'failed', message);
             if (message !== t('lifecycleCancelled')) {
                 Swordfish.showMessage({ type: 'error', message: message, parent: 'aiLifecycle' });
             }
@@ -7741,6 +7869,250 @@ export class Swordfish {
             Swordfish.mainWindow.webContents.send('set-status', '');
             if (Swordfish.aiLifecycleWindow && !Swordfish.aiLifecycleWindow.isDestroyed()) {
                 Swordfish.aiLifecycleWindow.webContents.send('lifecycle-finished');
+            }
+        }
+    }
+
+    static getLifecycleAi(srcLang: string, tgtLang: string): CustomAITranslator {
+        let preferences: Preferences = Swordfish.currentPreferences;
+        let translator: CustomAITranslator | null = null;
+        if (preferences.customAi && preferences.customAi.enabled) {
+            translator = new CustomAITranslator(preferences.customAi as CustomAiConfig);
+        } else if (preferences.chatGpt && preferences.chatGpt.enabled) {
+            translator = new CustomAITranslator({
+                enabled: true,
+                name: 'ChatGPT',
+                baseUrl: 'https://api.openai.com/v1',
+                apiKey: preferences.chatGpt.apiKey,
+                model: preferences.chatGpt.model,
+                format: 'openai-chat',
+                requestTemplate: '',
+                responsePath: 'choices.0.message.content',
+                extraHeaders: '',
+                fixTags: false
+            });
+        } else if (preferences.anthropic && preferences.anthropic.enabled) {
+            translator = new CustomAITranslator({
+                enabled: true,
+                name: 'Claude',
+                baseUrl: 'https://api.anthropic.com/v1',
+                apiKey: preferences.anthropic.apiKey,
+                model: preferences.anthropic.model,
+                format: 'anthropic',
+                requestTemplate: '',
+                responsePath: 'content.0.text',
+                extraHeaders: '',
+                fixTags: false
+            });
+        } else if (preferences.gemini && preferences.gemini.enabled) {
+            translator = new CustomAITranslator({
+                enabled: true,
+                name: 'Gemini',
+                baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+                apiKey: preferences.gemini.apiKey,
+                model: preferences.gemini.model,
+                format: 'gemini',
+                requestTemplate: '',
+                responsePath: 'candidates.0.content.parts.0.text',
+                extraHeaders: '',
+                fixTags: false
+            });
+        } else if (preferences.ollama && preferences.ollama.enabled) {
+            translator = new CustomAITranslator({
+                enabled: true,
+                name: 'Ollama',
+                baseUrl: preferences.ollama.url || 'http://localhost:11434',
+                apiKey: '',
+                model: preferences.ollama.model,
+                format: 'ollama',
+                requestTemplate: '',
+                responsePath: 'message.content',
+                extraHeaders: '',
+                fixTags: false
+            });
+        }
+        if (!translator) {
+            throw new Error(t('lifecycleNeedEngine'));
+        }
+        translator.setSourceLanguage(srcLang);
+        translator.setTargetLanguage(tgtLang);
+        return translator;
+    }
+
+    static async createMemorySilent(name: string, project: string): Promise<string> {
+        let id: string = 'mem-' + Date.now();
+        let data: any = await Swordfish.sendRequestAsync('/memories/create', {
+            id: id,
+            name: name,
+            project: project,
+            subject: '',
+            client: ''
+        });
+        if (data.status !== Swordfish.SUCCESS) {
+            throw new Error(data.reason || t('unknownError'));
+        }
+        return id;
+    }
+
+    static async createGlossarySilent(name: string, project: string): Promise<string> {
+        let id: string = 'gls-' + Date.now();
+        let data: any = await Swordfish.sendRequestAsync('/glossaries/create', {
+            id: id,
+            name: name,
+            project: project,
+            subject: '',
+            client: ''
+        });
+        if (data.status !== Swordfish.SUCCESS) {
+            throw new Error(data.reason || t('unknownError'));
+        }
+        return id;
+    }
+
+    static async fetchAllSegments(projectId: string): Promise<any[]> {
+        let countData: any = await Swordfish.sendRequestAsync('/projects/count', { project: projectId });
+        let total: number = countData.count || 0;
+        let segments: any[] = [];
+        let pageSize: number = 500;
+        for (let start: number = 0; start < total; start += pageSize) {
+            Swordfish.assertNotCancelled();
+            let page: any = await Swordfish.sendRequestAsync('/projects/segments', {
+                project: projectId,
+                start: start,
+                count: pageSize,
+                filterText: '',
+                filterLanguage: 'source',
+                caseSensitiveFilter: false,
+                regExp: false,
+                showUntranslated: true,
+                showTranslated: true,
+                showConfirmed: true,
+                showReviewed: true,
+                sortOption: 'none',
+                sortDesc: false
+            });
+            if (Array.isArray(page.segments)) {
+                segments = segments.concat(page.segments);
+            }
+        }
+        return segments;
+    }
+
+    static async collectBilingualPairs(projectId: string): Promise<TextPair[]> {
+        let segments: any[] = await Swordfish.fetchAllSegments(projectId);
+        let pairs: TextPair[] = [];
+        for (let segment of segments) {
+            let source: string = stripHtml(segment.source || '');
+            let target: string = stripHtml(segment.target || '');
+            if (source && target) {
+                pairs.push({ source: source, target: target });
+            }
+        }
+        return pairs;
+    }
+
+    static async countEmptyTargets(projectId: string): Promise<number> {
+        let segments: any[] = await Swordfish.fetchAllSegments(projectId);
+        let empty: number = 0;
+        for (let segment of segments) {
+            if (!stripHtml(segment.target || '')) {
+                empty++;
+            }
+        }
+        return empty;
+    }
+
+    static async extractTermsWithAi(srcLang: string, tgtLang: string, pairs: TextPair[]): Promise<TextPair[]> {
+        let translator: CustomAITranslator = Swordfish.getLifecycleAi(srcLang, tgtLang);
+        let extracted: TextPair[] = [];
+        for (let chunk of chunkList(pairs, 25)) {
+            Swordfish.assertNotCancelled();
+            let raw: string = await translator.complete(
+                buildTermsPrompt(srcLang, tgtLang, chunk),
+                'You extract bilingual terminology. Reply with JSON only.'
+            );
+            extracted = extracted.concat(asTextPairs(parseJsonPayload(raw)));
+        }
+        let seen: Set<string> = new Set();
+        return extracted.filter((pair: TextPair) => {
+            let key: string = pair.source.toLowerCase() + '|' + pair.target.toLowerCase();
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
+        });
+    }
+
+    static async alignBilingualFiles(projectId: string, arg: any): Promise<number> {
+        let typeData: any = await Swordfish.sendRequestAsync('/services/getFileType', { files: arg.targetFiles });
+        if (typeData.status && typeData.status !== Swordfish.SUCCESS) {
+            throw new Error(typeData.reason || t('unknownError'));
+        }
+        Swordfish.lifecycleTypedTargetFiles = typeData.files || [];
+        let createData: any = await Swordfish.sendRequestAsync('/projects/create', {
+            description: arg.name + ' · align-tgt',
+            files: Swordfish.lifecycleTypedTargetFiles,
+            subject: '',
+            client: '',
+            srcLang: arg.tgtLang,
+            tgtLang: arg.srcLang,
+            memory: 'none',
+            applyTM: false,
+            glossary: 'none',
+            searchTerms: false,
+            xmlfilter: join(app.getAppPath(), 'xmlfilter'),
+            from: 'lifecycle-align'
+        });
+        if (createData.status !== Swordfish.SUCCESS) {
+            throw new Error(createData.reason || t('unknownErrorProcessing'));
+        }
+        await Swordfish.waitForProcess(createData.process);
+        let targetProjectId: string = createData.process;
+        try {
+            let sourceSegments: any[] = await Swordfish.fetchAllSegments(projectId);
+            let targetSegments: any[] = await Swordfish.fetchAllSegments(targetProjectId);
+            let sourceTexts: string[] = sourceSegments.map((segment: any) => stripHtml(segment.source || '')).filter((text: string) => text.length > 0);
+            let targetTexts: string[] = targetSegments.map((segment: any) => segmentPlainTarget(segment)).filter((text: string) => text.length > 0);
+            let translator: CustomAITranslator = Swordfish.getLifecycleAi(arg.srcLang, arg.tgtLang);
+            let pairs: TextPair[] = [];
+            let sourceChunks: string[][] = chunkList(sourceTexts, 30);
+            let targetChunks: string[][] = chunkList(targetTexts, 30);
+            let chunkCount: number = Math.max(sourceChunks.length, targetChunks.length);
+            for (let i: number = 0; i < chunkCount; i++) {
+                Swordfish.assertNotCancelled();
+                let raw: string = await translator.complete(
+                    buildAlignPrompt(arg.srcLang, arg.tgtLang, sourceChunks[i] || [], targetChunks[i] || []),
+                    'You align bilingual sentences. Reply with JSON only.'
+                );
+                pairs = pairs.concat(asTextPairs(parseJsonPayload(raw)));
+            }
+            let mapped = applyAlignedTargets(sourceSegments.map((segment: any) => {
+                return {
+                    file: segment.file,
+                    unit: segment.unit,
+                    segment: segment.segment,
+                    text: stripHtml(segment.source || '')
+                };
+            }), pairs);
+            for (let item of mapped) {
+                Swordfish.assertNotCancelled();
+                await Swordfish.sendRequestAsync('/projects/setTarget', {
+                    project: projectId,
+                    file: item.file,
+                    unit: item.unit,
+                    segment: item.segment,
+                    target: xmlTarget(item.target)
+                });
+            }
+            Swordfish.lifecycleLog(t('alignedPairs', mapped.length));
+            return mapped.length;
+        } finally {
+            try {
+                await Swordfish.sendRequestAsync('/projects/delete', { projects: [targetProjectId] });
+                Swordfish.mainWindow.webContents.send('request-projects', {});
+            } catch (_error) {
+                // keep the temporary alignment project if deletion fails
             }
         }
     }

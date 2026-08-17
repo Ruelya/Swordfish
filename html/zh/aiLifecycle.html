@@ -44,6 +44,13 @@
                     </td>
                 </tr>
                 <tr>
+                    <td class="noWrap"><label id="targetFilesLabel">双语对照文件</label></td>
+                    <td class="fill_width">
+                        <button id="selectTargetFilesButton">选择双语对照文件</button>
+                        <span id="targetFilesSummary" class="hint"></span>
+                    </td>
+                </tr>
+                <tr>
                     <td class="noWrap"><label for="exportFolder" id="exportLabel">导出目录</label></td>
                     <td class="fill_width">
                         <input type="text" id="exportFolder" class="table_input" style="width: calc(100% - 90px);">
@@ -66,6 +73,22 @@
             <div class="row middle">
                 <input type="checkbox" id="exportAfter" checked>
                 <label for="exportAfter" id="exportAfterLabel">Export translations when finished</label>
+            </div>
+            <div class="row middle">
+                <input type="checkbox" id="alignBilingual">
+                <label for="alignBilingual" id="alignBilingualLabel">AI 双语文件对齐</label>
+            </div>
+            <div class="row middle">
+                <input type="checkbox" id="alignTerms" checked>
+                <label for="alignTerms" id="alignTermsLabel">AI 术语对齐</label>
+            </div>
+            <div class="row middle">
+                <input type="checkbox" id="generateTm" checked>
+                <label for="generateTm" id="generateTmLabel">生成翻译记忆库</label>
+            </div>
+            <div class="row middle">
+                <input type="checkbox" id="generateGlossary" checked>
+                <label for="generateGlossary" id="generateGlossaryLabel">生成术语库</label>
             </div>
             <label id="logLabel">运行日志</label>
             <div id="logArea" class="lifecycle-log"></div>

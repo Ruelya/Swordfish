@@ -25,11 +25,15 @@ const STEPS: LifecycleStep[] = [
     { id: 'prepare', labelKey: 'stepPrepare' },
     { id: 'create', labelKey: 'stepCreate' },
     { id: 'open', labelKey: 'stepOpen' },
+    { id: 'align', labelKey: 'stepAlign' },
     { id: 'tm', labelKey: 'stepTm' },
     { id: 'ai', labelKey: 'stepAi' },
     { id: 'accept', labelKey: 'stepAccept' },
     { id: 'qa', labelKey: 'stepQa' },
     { id: 'confirm', labelKey: 'stepConfirm' },
+    { id: 'generateTm', labelKey: 'stepGenerateTm' },
+    { id: 'alignTerms', labelKey: 'stepAlignTerms' },
+    { id: 'generateGlossary', labelKey: 'stepGenerateGlossary' },
     { id: 'export', labelKey: 'stepExport' },
     { id: 'done', labelKey: 'stepDone' }
 ];
@@ -37,6 +41,7 @@ const STEPS: LifecycleStep[] = [
 export class AiLifecycle {
 
     files: string[] = [];
+    targetFiles: string[] = [];
     running: boolean = false;
 
     constructor() {
@@ -65,6 +70,15 @@ export class AiLifecycle {
                 ? t('noFilesSelected')
                 : this.files.map((file: string) => file.split(/[\\/]/).pop()).join(', ');
         });
+        ipcRenderer.on('lifecycle-target-files-selected', (_event: IpcRendererEvent, files: string[]) => {
+            this.targetFiles = files || [];
+            (document.getElementById('targetFilesSummary') as HTMLSpanElement).innerText = this.targetFiles.length === 0
+                ? t('noTargetFilesSelected')
+                : this.targetFiles.map((file: string) => file.split(/[\\/]/).pop()).join(', ');
+            if (this.targetFiles.length > 0) {
+                (document.getElementById('alignBilingual') as HTMLInputElement).checked = true;
+            }
+        });
         ipcRenderer.on('lifecycle-export-folder', (_event: IpcRendererEvent, folder: string) => {
             (document.getElementById('exportFolder') as HTMLInputElement).value = folder || '';
         });
@@ -80,6 +94,9 @@ export class AiLifecycle {
         });
         (document.getElementById('selectFilesButton') as HTMLButtonElement).addEventListener('click', () => {
             ipcRenderer.send('lifecycle-select-files');
+        });
+        (document.getElementById('selectTargetFilesButton') as HTMLButtonElement).addEventListener('click', () => {
+            ipcRenderer.send('lifecycle-select-target-files');
         });
         (document.getElementById('browseExportButton') as HTMLButtonElement).addEventListener('click', () => {
             ipcRenderer.send('lifecycle-browse-export');
@@ -100,8 +117,9 @@ export class AiLifecycle {
             }
         });
         (document.getElementById('filesSummary') as HTMLSpanElement).innerText = t('noFilesSelected');
+        (document.getElementById('targetFilesSummary') as HTMLSpanElement).innerText = t('noTargetFilesSelected');
         setTimeout(() => {
-            ipcRenderer.send('set-height', { window: 'aiLifecycle', width: 980, height: 720 });
+            ipcRenderer.send('set-height', { window: 'aiLifecycle', width: 980, height: 820 });
         }, 200);
     }
 
@@ -116,12 +134,18 @@ export class AiLifecycle {
         (document.getElementById('glossaryLabel') as HTMLLabelElement).innerText = t('defaultGlossary');
         (document.getElementById('filesLabel') as HTMLLabelElement).innerText = t('selectSourceFiles');
         (document.getElementById('selectFilesButton') as HTMLButtonElement).innerText = t('selectSourceFiles');
+        (document.getElementById('targetFilesLabel') as HTMLLabelElement).innerText = t('selectTargetFiles');
+        (document.getElementById('selectTargetFilesButton') as HTMLButtonElement).innerText = t('selectTargetFiles');
         (document.getElementById('exportLabel') as HTMLLabelElement).innerText = t('exportFolder');
         (document.getElementById('browseExportButton') as HTMLButtonElement).innerText = t('browse');
         (document.getElementById('openEditorLabel') as HTMLLabelElement).innerText = t('openEditorVisible');
         (document.getElementById('runQaLabel') as HTMLLabelElement).innerText = t('runQa');
         (document.getElementById('confirmAfterLabel') as HTMLLabelElement).innerText = t('confirmAfterTranslate');
         (document.getElementById('exportAfterLabel') as HTMLLabelElement).innerText = t('exportAfterComplete');
+        (document.getElementById('alignBilingualLabel') as HTMLLabelElement).innerText = t('alignBilingual');
+        (document.getElementById('alignTermsLabel') as HTMLLabelElement).innerText = t('alignTermsOption');
+        (document.getElementById('generateTmLabel') as HTMLLabelElement).innerText = t('generateTmOption');
+        (document.getElementById('generateGlossaryLabel') as HTMLLabelElement).innerText = t('generateGlossaryOption');
         (document.getElementById('logLabel') as HTMLLabelElement).innerText = t('log');
         (document.getElementById('startButton') as HTMLButtonElement).innerText = t('startLifecycle');
         (document.getElementById('cancelButton') as HTMLButtonElement).innerText = t('cancelLifecycle');
@@ -205,6 +229,11 @@ export class AiLifecycle {
             ipcRenderer.send('show-message', { type: 'warning', message: t('lifecycleNeedExport'), parent: 'aiLifecycle' });
             return;
         }
+        let alignBilingual: boolean = (document.getElementById('alignBilingual') as HTMLInputElement).checked;
+        if (alignBilingual && this.targetFiles.length === 0) {
+            ipcRenderer.send('show-message', { type: 'warning', message: t('lifecycleNeedTargetFiles'), parent: 'aiLifecycle' });
+            return;
+        }
         this.running = true;
         (document.getElementById('startButton') as HTMLButtonElement).disabled = true;
         (document.getElementById('logArea') as HTMLDivElement).textContent = '';
@@ -216,11 +245,16 @@ export class AiLifecycle {
             memory: (document.getElementById('memorySelect') as HTMLSelectElement).value,
             glossary: (document.getElementById('glossarySelect') as HTMLSelectElement).value,
             files: this.files,
+            targetFiles: this.targetFiles,
             exportFolder: exportFolder,
             openEditor: (document.getElementById('openEditor') as HTMLInputElement).checked,
             runQa: (document.getElementById('runQa') as HTMLInputElement).checked,
             confirmAfter: (document.getElementById('confirmAfter') as HTMLInputElement).checked,
-            exportAfter: exportAfter
+            exportAfter: exportAfter,
+            alignBilingual: alignBilingual,
+            alignTerms: (document.getElementById('alignTerms') as HTMLInputElement).checked,
+            generateTm: (document.getElementById('generateTm') as HTMLInputElement).checked,
+            generateGlossary: (document.getElementById('generateGlossary') as HTMLInputElement).checked
         });
     }
 }

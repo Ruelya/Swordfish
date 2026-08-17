@@ -1916,16 +1916,7 @@ public class XliffStore {
 		String target = json.getString("target");
 		Element tgt = XliffUtils.buildElement(target);
 		String pureTarget = XliffUtils.pureText(tgt);
-
-		String sql = "UPDATE segments SET target=?, targetText=? WHERE file=? AND unitId=? AND segId=?";
-		try (PreparedStatement prep = conn.prepareStatement(sql)) {
-			prep.setString(1, target);
-			prep.setString(2, pureTarget);
-			prep.setString(3, file);
-			prep.setString(4, unit);
-			prep.setString(5, segment);
-			prep.executeUpdate();
-		}
+		updateTarget(file, unit, segment, tgt, pureTarget, false);
 		JSONObject tagsData = getUnitData(file, unit);
 		boolean preserve = "preserve".equals(tgt.getAttributeValue("xml:space", "default"));
 		String tagged = addHtmlTags(tgt, "", false, false, tagsData, preserve);

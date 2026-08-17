@@ -228,14 +228,20 @@ export class CustomAITranslator implements MTEngine {
         return this.translate('OK');
     }
 
-    private async callModel(prompt: string, xmlMode: boolean): Promise<string> {
+    async complete(prompt: string, systemPrompt?: string): Promise<string> {
+        this.srcLang = this.srcLang || 'en';
+        this.tgtLang = this.tgtLang || 'zh';
+        return this.callModel(prompt, false, systemPrompt);
+    }
+
+    private async callModel(prompt: string, xmlMode: boolean, systemOverride?: string): Promise<string> {
         if (!this.config.model) {
             throw new Error('Model is not set.');
         }
         if (this.srcLang === '' || this.tgtLang === '') {
             throw new Error('Source and Target languages must be set before translation.');
         }
-        let system: string = MTUtils.getRole(this.srcLang, this.tgtLang);
+        let system: string = systemOverride || MTUtils.getRole(this.srcLang, this.tgtLang);
         let built = this.buildRequest(prompt, system, xmlMode);
         let response: Response = await fetch(built.url, {
             method: 'POST',

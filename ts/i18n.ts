@@ -360,7 +360,7 @@ const ZH: Record<string, string> = {
     preTranslateNeedEngine: '请先在首选项中启用至少一个 AI 或机器翻译引擎。',
     preTranslateNeedProject: '请先打开或选择一个项目。',
     lifecycleTitle: 'AI 自主完成项目生命周期',
-    lifecycleIntro: '可见式自动完成：创建项目 → 打开编辑器 → 应用记忆 → AI 预翻译 → 质量检查 → 确认 → 导出。每一步都会在界面中实时展示。',
+    lifecycleIntro: '可见式自动完成：创建项目 → 打开编辑器 → 双语对齐 → 应用记忆 → AI 预翻译 → 质量检查 → 确认 → 生成记忆库/术语库 → 导出。每一步都会在界面中实时展示。',
     selectSourceFiles: '选择源文件',
     noFilesSelected: '尚未选择文件',
     exportFolder: '导出目录',
@@ -380,7 +380,24 @@ const ZH: Record<string, string> = {
     stepQa: '质量检查',
     stepConfirm: '确认译文',
     stepExport: '导出成果',
+    stepAlign: '双语文件对齐',
+    stepAlignTerms: '术语对齐',
+    stepGenerateTm: '生成翻译记忆库',
+    stepGenerateGlossary: '生成术语库',
     stepDone: '完成',
+    selectTargetFiles: '选择双语对照文件',
+    noTargetFilesSelected: '尚未选择对照文件',
+    alignBilingual: 'AI 双语文件对齐',
+    alignTermsOption: 'AI 术语对齐',
+    generateTmOption: '生成翻译记忆库',
+    generateGlossaryOption: '生成术语库',
+    lifecycleNeedTargetFiles: '请先选择双语对照文件，再启用对齐。',
+    alignedPairs: '已对齐 {0} 对句段',
+    extractedTerms: '已抽出 {0} 条术语',
+    createdMemory: '已生成记忆库：{0}',
+    createdGlossary: '已生成术语库：{0}',
+    exportedTmx: '已导出 TMX：{0}',
+    noBilingualPairs: '没有可用于术语对齐的双语句段',
     waiting: '等待中',
     running: '进行中',
     done: '已完成',
@@ -807,7 +824,7 @@ const EN: Record<string, string> = {
     preTranslateNeedEngine: 'Enable at least one AI or machine translation engine in Preferences.',
     preTranslateNeedProject: 'Open or select a project first.',
     lifecycleTitle: 'AI Autonomous Project Lifecycle',
-    lifecycleIntro: 'Visibly complete the full cycle: create project → open editor → apply TM → AI pre-translate → QA → confirm → export. Every step is shown live.',
+    lifecycleIntro: 'Visibly complete the full cycle: create project → open editor → bilingual alignment → apply TM → AI pre-translate → QA → confirm → generate TM/glossary → export. Every step is shown live.',
     selectSourceFiles: 'Select source files',
     noFilesSelected: 'No files selected',
     exportFolder: 'Export folder',
@@ -827,7 +844,24 @@ const EN: Record<string, string> = {
     stepQa: 'Quality assurance',
     stepConfirm: 'Confirm translations',
     stepExport: 'Export',
+    stepAlign: 'Align bilingual files',
+    stepAlignTerms: 'Align terminology',
+    stepGenerateTm: 'Generate translation memory',
+    stepGenerateGlossary: 'Generate glossary',
     stepDone: 'Done',
+    selectTargetFiles: 'Select bilingual target files',
+    noTargetFilesSelected: 'No bilingual files selected',
+    alignBilingual: 'AI bilingual file alignment',
+    alignTermsOption: 'AI terminology alignment',
+    generateTmOption: 'Generate translation memory',
+    generateGlossaryOption: 'Generate glossary',
+    lifecycleNeedTargetFiles: 'Select bilingual target files before enabling alignment.',
+    alignedPairs: 'Aligned {0} segment pairs',
+    extractedTerms: 'Extracted {0} terms',
+    createdMemory: 'Created memory: {0}',
+    createdGlossary: 'Created glossary: {0}',
+    exportedTmx: 'Exported TMX: {0}',
+    noBilingualPairs: 'No bilingual segments available for term alignment',
     waiting: 'Waiting',
     running: 'Running',
     done: 'Done',
@@ -924,6 +958,10 @@ export function setAppLang(lang: string | undefined | null): AppLang {
 
 export function getAppLang(): AppLang {
     return currentLang;
+}
+
+export function catalogKeys(lang: AppLang): string[] {
+    return Object.keys(CATALOGS[lang]);
 }
 
 export function t(key: string, ...args: Array<string | number>): string {
