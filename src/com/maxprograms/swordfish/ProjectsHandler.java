@@ -1393,7 +1393,7 @@ public class ProjectsHandler implements HttpHandler {
 			String project = json.getString("project");
 			String glossary = json.getString("glossary");
 			Map<String, Project> projects = getProjects();
-			projects.get(project).setMemory(glossary);
+			projects.get(project).setGlossary(glossary);
 			saveProjectsList(projects);
 		} catch (IOException e) {
 			logger.log(Level.ERROR, e);

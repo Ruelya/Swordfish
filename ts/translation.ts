@@ -12,6 +12,7 @@
 
 import { ipcRenderer, IpcRendererEvent } from "electron";
 import { ThreeHorizontalPanels, ThreeVerticalPanels } from "./divider.js";
+import { t } from "./i18n.js";
 import { Main } from "./Main.js";
 import { Match } from "./match.js";
 import { MetaId } from "./metadata.js";
@@ -57,17 +58,16 @@ export class TranslationView {
     static HAS_COMMENT: string = '<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px"><path d="M288-288h288v-72H288v72Zm0-156h384v-72H288v72Zm0-156h384v-72H288v72Zm-72 456q-29.7 0-50.85-21.15Q144-186.3 144-216v-528q0-29.7 21.15-50.85Q186.3-816 216-816h528q29.7 0 50.85 21.15Q816-773.7 816-744v528q0 29.7-21.15 50.85Q773.7-144 744-144H216Zm0-72h528v-528H216v528Zm0-528v528-528Z"/></svg>';
     static NO_COMMENT: string = '<svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px"><path d="M204-120q-34.65 0-59.32-24.68Q120-169.35 120-204v-552q0-34.65 24.68-59.33Q169.35-840 204-840h552q34.65 0 59.33 24.67Q840-790.65 840-756v552q0 34.65-24.67 59.32Q790.65-120 756-120H204Zm0-84h552v-552H204v552Zm0 0v-552 552Z"/></svg>';
     static SVG_HAS_CONTEXT: string = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip0_4_17)"><path d="M11.05 13.75H11.95V11.05H11.05V13.75ZM11.8206 10.0206C11.9069 9.93438 11.95 9.8275 11.95 9.7C11.95 9.5725 11.9069 9.46563 11.8206 9.37938C11.7344 9.29313 11.6275 9.25 11.5 9.25C11.3725 9.25 11.2656 9.29313 11.1794 9.37938C11.0931 9.46563 11.05 9.5725 11.05 9.7C11.05 9.8275 11.0931 9.93438 11.1794 10.0206C11.2656 10.1069 11.3725 10.15 11.5 10.15C11.6275 10.15 11.7344 10.1069 11.8206 10.0206ZM11.5 16C10.8775 16 10.2925 15.8819 9.745 15.6456C9.1975 15.4094 8.72125 15.0888 8.31625 14.6838C7.91125 14.2788 7.59063 13.8025 7.35438 13.255C7.11813 12.7075 7 12.1225 7 11.5C7 10.8775 7.11813 10.2925 7.35438 9.745C7.59063 9.1975 7.91125 8.72125 8.31625 8.31625C8.72125 7.91125 9.1975 7.59063 9.745 7.35438C10.2925 7.11813 10.8775 7 11.5 7C12.1225 7 12.7075 7.11813 13.255 7.35438C13.8025 7.59063 14.2788 7.91125 14.6838 8.31625C15.0888 8.72125 15.4094 9.1975 15.6456 9.745C15.8819 10.2925 16 10.8775 16 11.5C16 12.1225 15.8819 12.7075 15.6456 13.255C15.4094 13.8025 15.0888 14.2788 14.6838 14.6838C14.2788 15.0888 13.8025 15.4094 13.255 15.6456C12.7075 15.8819 12.1225 16 11.5 16ZM11.5 15.1C12.505 15.1 13.3563 14.7513 14.0538 14.0538C14.7513 13.3563 15.1 12.505 15.1 11.5C15.1 10.495 14.7513 9.64375 14.0538 8.94625C13.3563 8.24875 12.505 7.9 11.5 7.9C10.495 7.9 9.64375 8.24875 8.94625 8.94625C8.24875 9.64375 7.9 10.495 7.9 11.5C7.9 12.505 8.24875 13.3563 8.94625 14.0538C9.64375 14.7513 10.495 15.1 11.5 15.1Z"/><line y1="1" x2="16" y2="1" stroke-width="2"/><line y1="5" x2="16" y2="5" stroke-width="2"/><line y1="9" x2="6" y2="9" stroke-width="2"/><line y1="13" x2="6" y2="13" stroke-width="2"/></g><defs><clipPath id="clip0_4_17"><rect width="16" height="16"/></clipPath></defs></svg>';
-    static CONTEXT_SPAN: string = "<span class='iconTooltip'>" + this.SVG_HAS_CONTEXT + " <small class='tooltiptext'>Segment has context</small></span>";
-
-    static LOCK_SPAN: string = "<span class='iconTooltip'>" + this.SVG_LOCK + " <small class='tooltiptext'>Locked segment</small></span>";
-    static FINAL_SPAN: string = "<span class='iconTooltip'>" + this.SVG_FINAL + " <small class='tooltiptext'>Confirmed</small></span>";
-    static TRANSLATED_SPAN: string = "<span class='iconTooltip'>" + this.SVG_TRANSLATED + " <small class='tooltiptext'>Draft</small></span>";
-    static NOTES_SPAN: string = "<span class='iconTooltip'>" + this.SVG_NOTE + " <small class='tooltiptext'>Segment has notes</small></span>";
-    static COMMENT_SPAN: string = this.SVG_COMMENT + " <small class='tooltiptext'>Review comments</small>";
-    static EDIT_COMMENT_SPAN: string = this.SVG_EDIT_COMMENT + '<span class="tooltiptext bottomTooltip">Show/Hide Review Comments</span>';
-    static SPACE_WARNING: string = "<span class='iconTooltip'>" + this.SVG_WARNING + " <small class='tooltiptext'>Space errors</small></span>";
-    static TAG_WARNING: string = "<span class='iconTooltip'>" + this.SVG_WARNING + " <small class='tooltiptext'>Tag errors</small></span>";
-    static SPACE_TAG_WARNING: string = "<span class='iconTooltip'>" + this.SVG_WARNING + " <small class='tooltiptext'>Tag and space errors</small></span>";
+    static get CONTEXT_SPAN(): string { return "<span class='iconTooltip'>" + this.SVG_HAS_CONTEXT + " <small class='tooltiptext'>" + t('segmentHasContext') + "</small></span>"; }
+    static get LOCK_SPAN(): string { return "<span class='iconTooltip'>" + this.SVG_LOCK + " <small class='tooltiptext'>" + t('lockedSegment') + "</small></span>"; }
+    static get FINAL_SPAN(): string { return "<span class='iconTooltip'>" + this.SVG_FINAL + " <small class='tooltiptext'>" + t('confirmed') + "</small></span>"; }
+    static get TRANSLATED_SPAN(): string { return "<span class='iconTooltip'>" + this.SVG_TRANSLATED + " <small class='tooltiptext'>" + t('draft') + "</small></span>"; }
+    static get NOTES_SPAN(): string { return "<span class='iconTooltip'>" + this.SVG_NOTE + " <small class='tooltiptext'>" + t('segmentHasNotes') + "</small></span>"; }
+    static get COMMENT_SPAN(): string { return this.SVG_COMMENT + " <small class='tooltiptext'>" + t('showHideReviewComments') + "</small>"; }
+    static get EDIT_COMMENT_SPAN(): string { return this.SVG_EDIT_COMMENT + '<span class="tooltiptext bottomTooltip">' + t('showHideReviewComments') + '</span>'; }
+    static get SPACE_WARNING(): string { return "<span class='iconTooltip'>" + this.SVG_WARNING + " <small class='tooltiptext'>" + t('spaceErrors') + "</small></span>"; }
+    static get TAG_WARNING(): string { return "<span class='iconTooltip'>" + this.SVG_WARNING + " <small class='tooltiptext'>" + t('tagErrors') + "</small></span>"; }
+    static get SPACE_TAG_WARNING(): string { return "<span class='iconTooltip'>" + this.SVG_WARNING + " <small class='tooltiptext'>" + t('tagAndSpaceErrors') + "</small></span>"; }
 
     static LOCK_FRAGMENT: string = 'M18 8h-1V6c0-2.76-2';
     static NOTE_FRAGMENT: string = 'M20 2H4c-1.1 0-1.99';
@@ -443,7 +443,7 @@ export class TranslationView {
                 let infoSpan: HTMLSpanElement = document.createElement('span');
                 infoSpan.classList.add('iconTooltip');
                 infoSpan.classList.add('sourceSymbol');
-                infoSpan.innerHTML = TranslationView.FILE_INFO + '<small class="tooltiptext">File Info</small>';
+                infoSpan.innerHTML = TranslationView.FILE_INFO + '<small class="tooltiptext">' + t('fileInfo') + '</small>';
                 infoSpan.addEventListener('click', () => {
                     this.showFileInfo(detailsArray[0], sourceFile);
                 });
@@ -459,9 +459,9 @@ export class TranslationView {
                     this.showFileMetadata(detailsArray[0]);
                 });
                 if (this.hasCustomMetadata(detailsArray[0].customdata)) {
-                    metaSpan.innerHTML = TranslationView.HAS_COMMENT + '<small class="tooltiptext">Review Comments</small>';
+                    metaSpan.innerHTML = TranslationView.HAS_COMMENT + '<small class="tooltiptext">' + t('showHideReviewComments') + '</small>';
                 } else {
-                    metaSpan.innerHTML = TranslationView.NO_COMMENT + '<small class="tooltiptext">Review Comments</small>';
+                    metaSpan.innerHTML = TranslationView.NO_COMMENT + '<small class="tooltiptext">' + t('showHideReviewComments') + '</small>';
                 }
                 td.appendChild(metaSpan);
                 tr.appendChild(td);
@@ -496,7 +496,7 @@ export class TranslationView {
                     let infoSpan: HTMLSpanElement = document.createElement('span');
                     infoSpan.classList.add('iconTooltip');
                     infoSpan.classList.add('sourceSymbol');
-                    infoSpan.innerHTML = TranslationView.FILE_INFO + '<small class="tooltiptext">File Info</small>';
+                    infoSpan.innerHTML = TranslationView.FILE_INFO + '<small class="tooltiptext">' + t('fileInfo') + '</small>';
                     infoSpan.addEventListener('click', () => {
                         this.showFileInfo(details, sourceFile);
                     });
@@ -512,9 +512,9 @@ export class TranslationView {
                         this.showFileMetadata(details);
                     });
                     if (this.hasCustomMetadata(details.customdata)) {
-                        metaSpan.innerHTML = TranslationView.HAS_COMMENT + '<small class="tooltiptext">File Metadata</small>';
+                        metaSpan.innerHTML = TranslationView.HAS_COMMENT + '<small class="tooltiptext">' + t('fileMetadata') + '</small>';
                     } else {
-                        metaSpan.innerHTML = TranslationView.NO_COMMENT + '<small class="tooltiptext">File Metadata</small>';
+                        metaSpan.innerHTML = TranslationView.NO_COMMENT + '<small class="tooltiptext">' + t('fileMetadata') + '</small>';
                     }
                     td.appendChild(metaSpan);
                     tr.appendChild(td);
@@ -602,7 +602,7 @@ export class TranslationView {
         exportTranslations.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">'
             + '<path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Export Translations/Reviews</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('exportTranslationsReviews') + '</span>';
         exportTranslations.className = 'tooltip bottomTooltip';
         exportTranslations.addEventListener('click', () => {
             this.exportTranslations();
@@ -613,7 +613,7 @@ export class TranslationView {
         saveButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">'
             + '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm4.59-12.42L10 14.17l-2.59-2.58L6 13l4 4 8-8z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Save Changes</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('saveChanges') + '</span>';
         saveButton.className = 'tooltip bottomTooltip';
         saveButton.style.marginLeft = '10px';
         saveButton.addEventListener('click', () => {
@@ -625,7 +625,7 @@ export class TranslationView {
         cancelEdit.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">'
             + '<path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.59-13L12 10.59 8.41 7 7 8.41 10.59 12 7 15.59 8.41 17 12 13.41 15.59 17 17 15.59 13.41 12 17 8.41z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Discard Changes</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('discardChanges') + '</span>';
         cancelEdit.className = 'tooltip bottomTooltip';
         cancelEdit.addEventListener('click', () => {
             this.cancelEdit();
@@ -634,7 +634,7 @@ export class TranslationView {
 
         let confirmEdit: HTMLAnchorElement = document.createElement('a');
         confirmEdit.innerHTML = TranslationView.SVG_FINAL +
-            '<span class="tooltiptext bottomTooltip">Confirm Translation</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('confirmTranslation') + '</span>';
         confirmEdit.className = 'tooltip bottomTooltip';
         confirmEdit.style.marginLeft = '10px';
         confirmEdit.addEventListener('click', () => {
@@ -644,7 +644,7 @@ export class TranslationView {
 
         let confirmNextUntranslated: HTMLAnchorElement = document.createElement('a');
         confirmNextUntranslated.innerHTML = TranslationView.SVG_UNTRANSLATED +
-            '<span class="tooltiptext bottomTooltip">Confirm and go to Next Untranslated</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('confirmNextUntranslated') + '</span>';
         confirmNextUntranslated.className = 'tooltip bottomTooltip';
         confirmNextUntranslated.addEventListener('click', () => {
             this.saveEdit({ confirm: true, next: 'untranslated' });
@@ -653,7 +653,7 @@ export class TranslationView {
 
         let confirmNextUnconfirmed: HTMLAnchorElement = document.createElement('a');
         confirmNextUnconfirmed.innerHTML = TranslationView.SVG_TRANSLATED +
-            '<span class="tooltiptext bottomTooltip">Confirm and go to Next Uncornfirmed</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('confirmNextUnconfirmed') + '</span>';
         confirmNextUnconfirmed.className = 'tooltip bottomTooltip';
         confirmNextUnconfirmed.addEventListener('click', () => {
             this.saveEdit({ confirm: true, next: 'unconfirmed' });
@@ -667,7 +667,7 @@ export class TranslationView {
         goToLink.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">'
             + '<path d="M17.27 6.73l-4.24 10.13-1.32-3.42-.32-.83-.82-.32-3.43-1.33 10.13-4.23M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Go To Segment...</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('goToSegment') + '</span>';
         goToLink.addEventListener('click', () => {
             ipcRenderer.send('show-go-to-window');
         });
@@ -680,7 +680,7 @@ export class TranslationView {
             '<path d="M2 9V6.9H13V9H2ZM2 4.1V2H13V4.1H2Z"/>' +
             '<path d="M15.7 22L13.4833 16.5167L8 14.3V13.2111L22 8L16.7889 22H15.7ZM16.2056 19.1222L19.3556 10.6444L10.8778 13.7944L14.6889 15.3111L16.2056 19.1222Z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Go To Next Segment With Same Source</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('goToNextSameSource') + '</span>';
         goToSource.addEventListener('click', () => {
             this.goToSameSource();
         });
@@ -690,7 +690,7 @@ export class TranslationView {
         splitButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">'
             + '<path d="M8 19h3v4h2v-4h3l-4-4-4 4zm8-14h-3V1h-2v4H8l4 4 4-4zM4 11v2h16v-2H4z" />' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Split Segment</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('splitSegment') + '</span>';
         splitButton.className = 'tooltip bottomTooltip';
         splitButton.style.marginLeft = '10px';
         splitButton.addEventListener('click', () => {
@@ -702,7 +702,7 @@ export class TranslationView {
         mergeButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">'
             + '<path d="M16 13h-3V3h-2v10H8l4 4 4-4zM4 19v2h16v-2H4z" />' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Merge With Next Segment</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('mergeNext') + '</span>';
         mergeButton.className = 'tooltip bottomTooltip';
         mergeButton.addEventListener('click', () => {
             this.mergeNext();
@@ -712,7 +712,7 @@ export class TranslationView {
         this.sortButton.innerHTML = '<svg version="1.1" viewBox="0 0 24 24" height="24" width="24">'
             + '<path style="stroke-width:0.1" d="m 8.666667,10.444444 v 3.111112 H 12 L 7,19 2,13.555556 H 5.333333 V 10.444444 H 2 L 7,5 12,10.444444 Z M 22,14.333333 h -8.333333 v 1.555556 H 22 Z M 22,19 H 13.666667 V 17.444444 H 22 Z m 0,-6.222222 H 13.666667 V 11.222222 H 22 Z M 22,9.6666667 H 13.666667 V 8.1111111 H 22 Z M 22,6.5555556 H 13.666667 V 5 H 22 Z" />' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Sort Segments</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('sortSegments') + '</span>';
         this.sortButton.className = 'tooltip bottomTooltip';
         this.sortButton.style.marginLeft = '10px';
         this.sortButton.addEventListener('click', () => {
@@ -723,7 +723,7 @@ export class TranslationView {
         this.filterButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 24 24" height="24" width="24">'
             + '<path style="stroke-width:0.1" d="M 18.091348,3.6666667 11.913044,14.119167 v 4.936666 l -0.826087,-0.5 V 14.119167 L 4.9086522,3.6666667 Z M 21,2 H 2 L 9.4347826,14.578333 V 19.5 L 13.565217,22 v -7.421667 z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Filter Segments</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('filterSegments') + '</span>';
         this.filterButton.className = 'tooltip bottomTooltip';
         this.filterButton.addEventListener('click', () => {
             this.filterSegments();
@@ -734,7 +734,7 @@ export class TranslationView {
         replaceText.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">' +
             '<path d="M11 6c1.38 0 2.63.56 3.54 1.46L12 10h6V4l-2.05 2.05C14.68 4.78 12.93 4 11 4c-3.53 0-6.43 2.61-6.92 6H6.1c.46-2.28 2.48-4 4.9-4zm5.64 9.14c.66-.9 1.12-1.97 1.28-3.14H15.9c-.46 2.28-2.48 4-4.9 4-1.38 0-2.63-.56-3.54-1.46L10 12H4v6l2.05-2.05C7.32 17.22 9.07 18 11 18c1.55 0 2.98-.51 4.14-1.36L20 21.49 21.49 20l-4.85-4.86z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Replace Text</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('replaceText') + '</span>';
         replaceText.className = 'tooltip bottomTooltip';
         replaceText.addEventListener('click', () => {
             this.replaceText();
@@ -745,7 +745,7 @@ export class TranslationView {
         statisticsButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">' +
             '<path d="M9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4zm2.5 2.1h-15V5h15v14.1zm0-16.1h-15c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Project Statistics</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('projectStatistics') + '</span>';
         statisticsButton.className = 'tooltip bottomTooltip';
         statisticsButton.style.marginLeft = '10px';
         statisticsButton.addEventListener('click', () => {
@@ -757,7 +757,7 @@ export class TranslationView {
         htmlExportButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24">'
             + '<path d="M19,3H5C3.89,3,3,3.9,3,5v14c0,1.1,0.89,2,2,2h14c1.1,0,2-0.9,2-2V5C21,3.9,20.11,3,19,3z M19,19H5V7h14V19z M17,12H7v-2 h10V12z M13,16H7v-2h6V16z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Export HTML</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('exportHtml') + '</span>';
         htmlExportButton.className = 'tooltip bottomTooltip';
         htmlExportButton.addEventListener('click', () => {
             this.exportHTML();
@@ -768,7 +768,7 @@ export class TranslationView {
         concordanceButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
             '<path d="M21.172 24l-7.387-7.387c-1.388.874-3.024 1.387-4.785 1.387-4.971 0-9-4.029-9-9s4.029-9 9-9 9 4.029 9 9c0 1.761-.514 3.398-1.387 4.785l7.387 7.387-2.828 2.828zm-12.172-8c3.859 0 7-3.14 7-7s-3.141-7-7-7-7 3.14-7 7 3.141 7 7 7z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Concordance Search</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('concordanceSearch') + '</span>';
         concordanceButton.className = 'tooltip bottomTooltip';
         concordanceButton.style.marginLeft = '10px';
         concordanceButton.addEventListener('click', () => {
@@ -780,7 +780,7 @@ export class TranslationView {
         notesButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">' +
             '<path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17l-.59.59-.58.58V4h16v12zM6 12h2v2H6zm0-3h2v2H6zm0-3h2v2H6zm4 6h5v2h-5zm0-3h8v2h-8zm0-3h8v2h-8z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Show/Hide Notes</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('showHideNotes') + '</span>';
         notesButton.className = 'tooltip bottomTooltip';
         notesButton.style.marginLeft = '10px';
         notesButton.addEventListener('click', () => {
@@ -790,7 +790,7 @@ export class TranslationView {
 
         let contextButton: HTMLAnchorElement = document.createElement('a');
         contextButton.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.4 19H16.6V15.4H15.4V19ZM16.4275 14.0275C16.5425 13.9125 16.6 13.77 16.6 13.6C16.6 13.43 16.5425 13.2875 16.4275 13.1725C16.3125 13.0575 16.17 13 16 13C15.83 13 15.6875 13.0575 15.5725 13.1725C15.4575 13.2875 15.4 13.43 15.4 13.6C15.4 13.77 15.4575 13.9125 15.5725 14.0275C15.6875 14.1425 15.83 14.2 16 14.2C16.17 14.2 16.3125 14.1425 16.4275 14.0275ZM16 22C15.17 22 14.39 21.8425 13.66 21.5275C12.93 21.2125 12.295 20.785 11.755 20.245C11.215 19.705 10.7875 19.07 10.4725 18.34C10.1575 17.61 10 16.83 10 16C10 15.17 10.1575 14.39 10.4725 13.66C10.7875 12.93 11.215 12.295 11.755 11.755C12.295 11.215 12.93 10.7875 13.66 10.4725C14.39 10.1575 15.17 10 16 10C16.83 10 17.61 10.1575 18.34 10.4725C19.07 10.7875 19.705 11.215 20.245 11.755C20.785 12.295 21.2125 12.93 21.5275 13.66C21.8425 14.39 22 15.17 22 16C22 16.83 21.8425 17.61 21.5275 18.34C21.2125 19.07 20.785 19.705 20.245 20.245C19.705 20.785 19.07 21.2125 18.34 21.5275C17.61 21.8425 16.83 22 16 22ZM16 20.8C17.34 20.8 18.475 20.335 19.405 19.405C20.335 18.475 20.8 17.34 20.8 16C20.8 14.66 20.335 13.525 19.405 12.595C18.475 11.665 17.34 11.2 16 11.2C14.66 11.2 13.525 11.665 12.595 12.595C11.665 13.525 11.2 14.66 11.2 16C11.2 17.34 11.665 18.475 12.595 19.405C13.525 20.335 14.66 20.8 16 20.8Z"/><line x1="2" y1="4" x2="22" y2="4" stroke-width="2"/><line x1="2" y1="8" x2="22" y2="8" stroke-width="2"/><line x1="2" y1="12" x2="9" y2="12" stroke-width="2"/><line x1="2" y1="16" x2="9" y2="16" stroke-width="2"/><line x1="2" y1="20" x2="9" y2="20" stroke-width="2"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Show/Hide Context</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('showHideContext') + '</span>';
         contextButton.className = 'tooltip bottomTooltip';
         contextButton.addEventListener('click', () => {
             this.showContext();
@@ -807,7 +807,7 @@ export class TranslationView {
 
         let addTermButton: HTMLAnchorElement = document.createElement('a');
         addTermButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><line x1="2" y1="3" x2="13" y2="3" stroke-width="2"/><line x1="2" y1="7" x2="13" y2="7" stroke-width="2"/><line x1="2" y1="11" x2="13" y2="11" stroke-width="2"/><line x1="10" y1="16" x2="22" y2="16" stroke-width="2"/><line x1="16" y1="10" x2="16" y2="22" stroke-width="2"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Add Term to Glossary</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('addTerm') + '</span>';
         addTermButton.className = 'tooltip bottomTooltip';
         addTermButton.style.marginLeft = '10px';
         addTermButton.addEventListener('click', () => {
@@ -819,7 +819,7 @@ export class TranslationView {
         termSearchButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
             '<path d="M13 8h-8v-1h8v1zm0 2h-8v-1h8v1zm-3 2h-5v-1h5v1zm11.172 12l-7.387-7.387c-1.388.874-3.024 1.387-4.785 1.387-4.971 0-9-4.029-9-9s4.029-9 9-9 9 4.029 9 9c0 1.761-.514 3.398-1.387 4.785l7.387 7.387-2.828 2.828zm-12.172-8c3.859 0 7-3.14 7-7s-3.141-7-7-7-7 3.14-7 7 3.141 7 7 7z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Search Term in Glossary</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('searchTerm') + '</span>';
         termSearchButton.className = 'tooltip bottomTooltip';
         termSearchButton.addEventListener('click', () => {
             this.searchTerm();
@@ -830,7 +830,7 @@ export class TranslationView {
         tagsAnalysisButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">' +
             '<path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zm-7-2h2V7h-4v2h2z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Check Inline Tags</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('checkInlineTags') + '</span>';
         tagsAnalysisButton.className = 'tooltip bottomTooltip';
         tagsAnalysisButton.style.marginLeft = '10px';
         tagsAnalysisButton.addEventListener('click', () => {
@@ -842,7 +842,7 @@ export class TranslationView {
         spaceAnalysisButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24">' +
             '<path d="M3 21h18v-2H3v2zM3 8v8l4-4-4-4zm8 9h10v-2H11v2zM3 3v2h18V3H3zm8 6h10V7H11v2zm0 4h10v-2H11v2z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Check Initial/Trailing Spaces</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('checkSpaces') + '</span>';
         spaceAnalysisButton.className = 'tooltip bottomTooltip';
         spaceAnalysisButton.addEventListener('click', () => {
             ipcRenderer.send('analyze-spaces', this.projectId);
@@ -856,7 +856,7 @@ export class TranslationView {
             '<line x1="15" y1="6" x2="18" y2="6" stroke-width="2"/>' +
             '<path d="M17 7V11"  stroke-width="2"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Fix Tags with AI</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('fixTagsWithAi') + '</span>';
         fixTagsButton.className = 'tooltip bottomTooltip';
         fixTagsButton.style.marginLeft = '10px';
         fixTagsButton.addEventListener('click', () => {
@@ -868,7 +868,7 @@ export class TranslationView {
         promptButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" >' +
             '<path d="M240-280h480v-120H240v120Zm-80 120q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h640q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160Zm0-80h640v-480H160v480Zm0 0v-480 480Z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Open AI Prompt Dialog</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('openAiPrompt') + '</span>';
         promptButton.className = 'tooltip bottomTooltip';
         promptButton.addEventListener('click', () => {
             this.openAiPrompt();
@@ -882,7 +882,7 @@ export class TranslationView {
             '<path d="M2 7H14" stroke-width="2"/>' +
             '<path d="M2 11H14" stroke-width="2"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Insert AI Response in Segment</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('insertAiResponse') + '</span>';
         insertAiTransltionButton.className = 'tooltip bottomTooltip';
         insertAiTransltionButton.addEventListener('click', () => {
             ipcRenderer.send('paste-response');
@@ -896,7 +896,7 @@ export class TranslationView {
             '<path d="M7.5 15L8.2858 17.4184H10.8287L8.77145 18.9131L9.55725 21.3316L7.5 19.8369L5.44275 21.3316L6.22855 18.9131L4.1713 17.4184H6.7142L7.5 15Z"/>' +
             '<path d="M19.12 19.42H20.38C20.58 19.42 20.68 19.52 20.68 19.72V20.7C20.68 20.9 20.58 21 20.38 21H15.62C15.42 21 15.32 20.9 15.32 20.7V19.72C15.32 19.52 15.42 19.42 15.62 19.42C15.62 19.42 16.04 19.42 16.88 19.42V12.74H15.8C15.6 12.74 15.5 12.64 15.5 12.44V11.4C15.5 11.2 15.6 11.1 15.8 11.1H18.82C19.02 11.1 19.12 11.2 19.12 11.4V19.42ZM16.7 9.32C16.4467 9.05333 16.32 8.71333 16.32 8.3C16.32 7.88667 16.4467 7.54667 16.7 7.28C16.9667 7 17.3133 6.86 17.74 6.86C18.18 6.86 18.5267 7 18.78 7.28C19.0467 7.54667 19.18 7.88667 19.18 8.3C19.18 8.71333 19.0467 9.05333 18.78 9.32C18.5133 9.58667 18.16 9.72 17.72 9.72C17.2933 9.72 16.9533 9.58667 16.7 9.32Z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomTooltip">Search on IATE</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('searchIate') + '</span>';
         iateSearchButton.className = 'tooltip bottomTooltip';
         iateSearchButton.style.marginLeft = '10px';
         iateSearchButton.addEventListener('click', () => {
@@ -916,7 +916,7 @@ export class TranslationView {
 
         let memLabel: HTMLLabelElement = document.createElement('label');
         memLabel.style.marginTop = '4px';
-        memLabel.innerHTML = 'Memory';
+        memLabel.innerHTML = t('memory');
         memLabel.setAttribute('for', 'memSelect' + this.projectId);
         this.topBar.appendChild(memLabel);
 
@@ -932,7 +932,7 @@ export class TranslationView {
         requestTranslation.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
             '<path d="M21 21h-1.713l-.658-1.846h-3l-.663 1.846h-1.659l3.04-8h1.603l3.05 8zm-2.814-3.12l-1.049-3.018-1.054 3.018h2.103zm-9.464-12.037l.125-.562-1.02-.199-.101.464c-.345-.05-.712-.057-1.083-.019.009-.249.023-.494.045-.728h1.141v-.966h-1.004c.049-.246.092-.394.134-.533l-.997-.3c-.072.245-.134.484-.195.833h-1.138v.966h1.014c-.027.312-.043.637-.048.964-1.119.411-1.595 1.195-1.595 1.905 0 .84.663 1.578 1.709 1.482 1.301-.118 2.169-1.1 2.679-2.308.525.303.746.814.548 1.286-.185.436-.725.852-1.757.831v1.041c1.146.018 2.272-.417 2.715-1.469.431-1.028-.062-2.151-1.172-2.688zm-1.342.71c-.162.36-.375.717-.648.998-.041-.3-.07-.628-.086-.978.249-.032.499-.038.734-.02zm-1.758.336c.028.44.078.844.148 1.205-.927.169-.963-.744-.148-1.205zm15.378 5.111c.552 0 1 .449 1 1v8c0 .551-.448 1-1 1h-8c-.552 0-1-.449-1-1v-8c0-.551.448-1 1-1h8zm0-2h-8c-1.656 0-3 1.343-3 3v8c0 1.657 1.344 3 3 3h8c1.657 0 3-1.343 3-3v-8c0-1.657-1.343-3-3-3zm-13 3c0-.342.035-.677.102-1h-5.102c-.552 0-1-.449-1-1v-8c0-.551.448-1 1-1h8c.552 0 1 .449 1 1v5.101c.323-.066.657-.101 1-.101h1v-5c0-1.657-1.343-3-3-3h-8c-1.656 0-3 1.343-3 3v8c0 1.657 1.344 3 3 3h5v-1z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomCenterTooltip">Apply Translation Memory to All Segments</span>';
+            '<span class="tooltiptext bottomCenterTooltip">' + t('applyTmAll') + '</span>';
         requestTranslation.className = 'tooltip bottomCenterTooltip';
         requestTranslation.style.marginLeft = '4px';
         requestTranslation.addEventListener('click', () => {
@@ -943,7 +943,7 @@ export class TranslationView {
         let glossLabel: HTMLLabelElement = document.createElement('label');
         glossLabel.style.marginLeft = '10px';
         glossLabel.style.marginTop = '4px';
-        glossLabel.innerHTML = 'Glossary';
+        glossLabel.innerHTML = t('glossaries');
         glossLabel.setAttribute('for', 'glossSelect' + this.projectId);
         this.topBar.appendChild(glossLabel);
 
@@ -960,7 +960,7 @@ export class TranslationView {
         requestTerms.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24">' +
             '<path d="M14.17,5L19,9.83V19H5V5L14.17,5L14.17,5 M14.17,3H5C3.9,3,3,3.9,3,5v14c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2V9.83 c0-0.53-0.21-1.04-0.59-1.41l-4.83-4.83C15.21,3.21,14.7,3,14.17,3L14.17,3z M7,15h10v2H7V15z M7,11h10v2H7V11z M7,7h7v2H7V7z"/>' +
             '</svg>' +
-            '<span class="tooltiptext bottomRightTooltip">Get Terms for All Segments</span>';
+            '<span class="tooltiptext bottomRightTooltip">' + t('getTermsAll') + '</span>';
         requestTerms.className = 'tooltip bottomRightTooltip';
         requestTerms.style.marginRight = '10px';
         requestTerms.addEventListener('click', () => {
@@ -1014,7 +1014,7 @@ export class TranslationView {
         }
 
         let pagesSpan: HTMLSpanElement = document.getElementById('pages' + this.projectId) as HTMLSpanElement;
-        pagesSpan.innerText = 'of ' + this.maxPage;
+        pagesSpan.innerText = t('ofPages', this.maxPage);
         let pageInput: HTMLInputElement = document.getElementById('page' + this.projectId) as HTMLInputElement;
         pageInput.value = '1';
         this.getSegments();
@@ -1072,7 +1072,7 @@ export class TranslationView {
 
         let sourceTh: HTMLTableCellElement = document.createElement('th');
         sourceTh.id = 'sourceTh' + this.projectId;
-        sourceTh.innerText = 'Source (' + this.srcLang + ')';
+        sourceTh.innerText = t('source') + ' (' + this.srcLang + ')';
         tr.appendChild(sourceTh);
 
         let translateTh: HTMLTableCellElement = document.createElement('th');
@@ -1093,7 +1093,7 @@ export class TranslationView {
 
         let targetTh: HTMLTableCellElement = document.createElement('th');
         targetTh.id = 'targetTh' + this.projectId;
-        targetTh.innerText = 'Target (' + this.tgtLang + ')';
+        targetTh.innerText = t('target') + ' (' + this.tgtLang + ')';
         tr.appendChild(targetTh);
 
         table.appendChild(this.tbody);
@@ -1108,7 +1108,7 @@ export class TranslationView {
         firstLink.innerHTML = '<svg width="16" height="24" viewBox="3 0 19 24">' +
             '<path d="M18.41 16.59L13.82 12l4.59-4.59L17 6l-6 6 6 6zM6 6h2v12H6z" />' +
             '</svg>' +
-            '<span class="tooltiptext topTooltip">First Page</span>';
+            '<span class="tooltiptext topTooltip">' + t('firstPage') + '</span>';
         firstLink.addEventListener('click', () => {
             this.firstPage();
         });
@@ -1119,14 +1119,14 @@ export class TranslationView {
         previousLink.classList.add('topTooltip');
         previousLink.innerHTML = '<svg width="16" height="24" viewBox="3 0 19 24">' +
             '<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />' + '</svg>' +
-            '<span class="tooltiptext topTooltip">Previous Page</span>';
+            '<span class="tooltiptext topTooltip">' + t('previousPage') + '</span>';
         previousLink.addEventListener('click', () => {
             this.previousPage();
         });
         statusArea.appendChild(previousLink);
 
         let pageLabel: HTMLLabelElement = document.createElement('label');
-        pageLabel.innerText = 'Page';
+        pageLabel.innerText = t('pageLabel');
         pageLabel.setAttribute('for', 'page' + this.projectId);
         pageLabel.style.marginTop = '4px';
         statusArea.appendChild(pageLabel);
@@ -1151,7 +1151,7 @@ export class TranslationView {
             }
         });
         pageDiv.appendChild(pageInput);
-        pageDiv.insertAdjacentHTML('beforeend', '<span class="tooltiptext topTooltip">Enter page number and press ENTER</span>');
+        pageDiv.insertAdjacentHTML('beforeend', '<span class="tooltiptext topTooltip">' + t('enterPageAndPressEnter') + '</span>');
 
         let pagesSpan: HTMLSpanElement = document.createElement('span');
         pagesSpan.id = 'pages' + this.projectId;
@@ -1167,7 +1167,7 @@ export class TranslationView {
         nextLink.classList.add('topTooltip');
         nextLink.innerHTML = '<svg width="16" height="24" viewBox="3 0 19 24">' +
             '<path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />' + '</svg>' +
-            '<span class="tooltiptext topTooltip">Next Page</span>';
+            '<span class="tooltiptext topTooltip">' + t('nextPage') + '</span>';
         nextLink.addEventListener('click', () => {
             this.nextPage();
         });
@@ -1178,14 +1178,14 @@ export class TranslationView {
         lastLink.classList.add('topTooltip');
         lastLink.innerHTML = '<svg width="16" height="24" viewBox="3 0 19 24">' +
             '<path d="M5.59 7.41L10.18 12l-4.59 4.59L7 18l6-6-6-6zM16 6h2v12h-2z" />' + '</svg>' +
-            '<span class="tooltiptext topTooltip">Last Page</span>';
+            '<span class="tooltiptext topTooltip">' + t('lastPage') + '</span>';
         lastLink.addEventListener('click', () => {
             this.lastPage();
         });
         statusArea.appendChild(lastLink);
 
         let rowsLabel: HTMLLabelElement = document.createElement('label');
-        rowsLabel.innerText = 'Rows/Page';
+        rowsLabel.innerText = t('rowsLabel');
         rowsLabel.setAttribute('for', 'rows_page' + this.projectId);
         rowsLabel.style.marginTop = '4px';
         statusArea.appendChild(rowsLabel);
@@ -1207,12 +1207,12 @@ export class TranslationView {
             if (this.maxPage * this.rowsPage < this.segmentsCount) {
                 this.maxPage++;
             }
-            pagesSpan.innerText = 'of ' + this.maxPage;
+            pagesSpan.innerText = t('ofPages', this.maxPage);
             pageInput.value = '1';
             this.firstPage();
         });
         rowDiv.appendChild(rowsInput);
-        rowDiv.insertAdjacentHTML('beforeend', '<span class="tooltiptext topTooltip">Enter number of rows/page and press ENTER</span>');
+        rowDiv.insertAdjacentHTML('beforeend', '<span class="tooltiptext topTooltip">' + t('enterRowsAndPressEnter') + '</span>');
 
         let filler: HTMLSpanElement = document.createElement('span');
         filler.innerHTML = '&nbsp;';
@@ -1317,7 +1317,7 @@ export class TranslationView {
 
         let filler: HTMLSpanElement = document.createElement('span');
         filler.classList.add('fill_width');
-        filler.innerText = 'Files';
+        filler.innerText = t('files');
         filesTitle.appendChild(filler);
 
         this.collapseFilesButton.innerHTML = TranslationView.SVG_EXPAND;
@@ -1391,13 +1391,13 @@ export class TranslationView {
 
         let collapseTooltip: HTMLDivElement = document.createElement('div');
         collapseTooltip.classList.add('filesTooltip');
-        collapseTooltip.innerText = 'Collapse Files Panel';
+        collapseTooltip.innerText = t('collapseFiles');
         collapseTooltip.style.visibility = 'hidden';
         panelsContainer.appendChild(collapseTooltip);
 
         let expandTooltip: HTMLDivElement = document.createElement('div');
         expandTooltip.classList.add('filesTooltip');
-        expandTooltip.innerText = 'Expand Files Panel';
+        expandTooltip.innerText = t('expandFiles');
         expandTooltip.style.visibility = 'hidden';
         panelsContainer.appendChild(expandTooltip);
 
@@ -1457,11 +1457,11 @@ export class TranslationView {
 
         let filler: HTMLSpanElement = document.createElement('span');
         filler.classList.add('fill_width');
-        filler.innerText = 'Translation Memory';
+        filler.innerText = t('translationMemory');
         memoryTitle.appendChild(filler);
 
         this.expandMatchesButton.className = 'tooltip bottomRightTooltip';
-        this.expandMatchesButton.innerHTML = TranslationView.SVG_VERTICAL_EXPAND + '<span class="tooltiptext bottomRightTooltip">Expand Translation Memory</span>';
+        this.expandMatchesButton.innerHTML = TranslationView.SVG_VERTICAL_EXPAND + '<span class="tooltiptext bottomRightTooltip">' + t('expandTm') + '</span>';
         this.expandMatchesButton.style.marginLeft = '4px';
         this.toggleButtonVisibility(this.expandMatchesButton, false);
         this.expandMatchesButton.addEventListener('click', () => {
@@ -1476,7 +1476,7 @@ export class TranslationView {
         memoryTitle.appendChild(this.expandMatchesButton);
 
         this.collapseMatchesButton.className = 'tooltip bottomRightTooltip';
-        this.collapseMatchesButton.innerHTML = TranslationView.SVG_VERTICAL_COLLAPSE + '<span class="tooltiptext bottomRightTooltip">Collapse Translation Memory</span>';
+        this.collapseMatchesButton.innerHTML = TranslationView.SVG_VERTICAL_COLLAPSE + '<span class="tooltiptext bottomRightTooltip">' + t('collapseTm') + '</span>';
         this.collapseMatchesButton.style.marginLeft = '4px';
         this.collapseMatchesButton.style.marginLeft = '4px';
         this.collapseMatchesButton.addEventListener('click', () => {
@@ -1607,13 +1607,13 @@ export class TranslationView {
 
         let collapseTooltip: HTMLDivElement = document.createElement('div');
         collapseTooltip.classList.add('rightPanelTooltip');
-        collapseTooltip.innerText = 'Collapse Right Panels';
+        collapseTooltip.innerText = t('collapseRight');
         collapseTooltip.style.visibility = 'hidden';
         panelsContainer.appendChild(collapseTooltip);
 
         let expandTooltip: HTMLDivElement = document.createElement('div');
         expandTooltip.classList.add('rightPanelTooltip');
-        expandTooltip.innerText = 'Expand Right Panels';
+        expandTooltip.innerText = t('expandRight');
         expandTooltip.style.visibility = 'hidden';
         panelsContainer.appendChild(expandTooltip);
 
@@ -1656,11 +1656,11 @@ export class TranslationView {
 
         let Title: HTMLSpanElement = document.createElement('span');
         Title.classList.add('fill_width');
-        Title.innerText = 'Machine Translation';
+        Title.innerText = t('machineTranslation');
         machineTitle.appendChild(Title);
 
         this.expandMtButton.className = 'tooltip bottomRightTooltip';
-        this.expandMtButton.innerHTML = TranslationView.SVG_VERTICAL_EXPAND + '<span class="tooltiptext bottomRightTooltip">Expand Machine Translation</span>';
+        this.expandMtButton.innerHTML = TranslationView.SVG_VERTICAL_EXPAND + '<span class="tooltiptext bottomRightTooltip">' + t('expandMt') + '</span>';
         this.expandMtButton.style.marginLeft = '4px';
         this.toggleButtonVisibility(this.expandMtButton, false);
         this.expandMtButton.addEventListener('click', () => {
@@ -1675,7 +1675,7 @@ export class TranslationView {
         machineTitle.appendChild(this.expandMtButton);
 
         this.collapseMtButton.className = 'tooltip bottomRightTooltip';
-        this.collapseMtButton.innerHTML = TranslationView.SVG_VERTICAL_COLLAPSE + '<span class="tooltiptext bottomRightTooltip">Collapse Machine Translation</span>';
+        this.collapseMtButton.innerHTML = TranslationView.SVG_VERTICAL_COLLAPSE + '<span class="tooltiptext bottomRightTooltip">' + t('collapseMt') + '</span>';
         this.collapseMtButton.style.marginLeft = '4px';
         this.collapseMtButton.style.marginLeft = '4px';
         this.collapseMtButton.addEventListener('click', () => {
@@ -1728,11 +1728,11 @@ export class TranslationView {
 
         let Title: HTMLSpanElement = document.createElement('span');
         Title.classList.add('fill_width');
-        Title.innerText = 'Terms';
+        Title.innerText = t('terms');
         termsTitle.appendChild(Title);
 
         this.expandTermsButton.className = 'tooltip topRightTooltip';
-        this.expandTermsButton.innerHTML = TranslationView.SVG_VERTICAL_EXPAND + '<span class="tooltiptext topRightTooltip">Expand Terms</span>';
+        this.expandTermsButton.innerHTML = TranslationView.SVG_VERTICAL_EXPAND + '<span class="tooltiptext topRightTooltip">' + t('expandTerms') + '</span>';
         this.expandTermsButton.style.marginLeft = '4px';
         this.toggleButtonVisibility(this.expandTermsButton, false);
         this.expandTermsButton.addEventListener('click', () => {
@@ -1747,7 +1747,7 @@ export class TranslationView {
         termsTitle.appendChild(this.expandTermsButton);
 
         this.collapseTermsButton.className = 'tooltip bottomRightTooltip';
-        this.collapseTermsButton.innerHTML = TranslationView.SVG_VERTICAL_COLLAPSE + '<span class="tooltiptext bottomRightTooltip">Collapse Terms</span>';
+        this.collapseTermsButton.innerHTML = TranslationView.SVG_VERTICAL_COLLAPSE + '<span class="tooltiptext bottomRightTooltip">' + t('collapseTerms') + '</span>';
         this.collapseTermsButton.style.marginLeft = '4px';
         this.collapseTermsButton.addEventListener('click', () => {
             if (this.termsContainer.classList.contains('hidden')) {
@@ -2435,7 +2435,7 @@ export class TranslationView {
             let currentTranslate: HTMLTableCellElement = this.currentRow.getElementsByClassName('translate')[0] as HTMLTableCellElement;
             let isLocked: boolean = currentTranslate.innerHTML.includes(TranslationView.LOCK_FRAGMENT);
             if (isLocked) {
-                ipcRenderer.send('show-message', { type: 'warning', message: 'Locked segment' });
+                ipcRenderer.send('show-message', { type: 'warning', message: t('lockedSegment') });
                 return;
             }
             let segmentId: any = this.currentId;
@@ -2507,7 +2507,7 @@ export class TranslationView {
             let currentState: HTMLTableCellElement = this.currentRow.getElementsByClassName('state')[0] as HTMLTableCellElement;
             this.currentCell = this.currentRow.getElementsByClassName('target')[0] as HTMLTableCellElement;
             if (currentTranslate.innerHTML.includes(TranslationView.LOCK_FRAGMENT)) {
-                ipcRenderer.send('show-message', { type: 'warning', message: 'Locked segment' });
+                ipcRenderer.send('show-message', { type: 'warning', message: t('lockedSegment') });
                 return;
             }
             let hasNotes = currentState.innerHTML.includes(TranslationView.NOTE_FRAGMENT);
@@ -2560,7 +2560,7 @@ export class TranslationView {
         let currentTranslate: HTMLTableCellElement = this.currentRow?.getElementsByClassName('translate')[0] as HTMLTableCellElement;
         let isLocked: boolean = currentTranslate.innerHTML.includes(TranslationView.LOCK_FRAGMENT);
         if (isLocked) {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Locked segment' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('lockedSegment') });
             return;
         }
         if (arg.tag) {
@@ -3221,7 +3221,7 @@ export class TranslationView {
                 }
                 let lockSpan: HTMLSpanElement = document.createElement('span');
                 lockSpan.classList.add('iconTooltip');
-                lockSpan.innerHTML = TranslationView.SVG_LOCK + " <small class='tooltiptext'>Locked segment</small>";
+                lockSpan.innerHTML = TranslationView.SVG_LOCK + " <small class='tooltiptext'>" + t('lockedSegment') + "</small>";
                 currentTranslate.insertBefore(lockSpan, currentTranslate.firstChild);
             }
 
@@ -3403,7 +3403,7 @@ export class TranslationView {
         let currentTranslate: HTMLTableCellElement = this.currentRow?.getElementsByClassName('translate')[0] as HTMLTableCellElement;
         let isLocked: boolean = currentTranslate.innerHTML.includes(TranslationView.LOCK_FRAGMENT);
         if (isLocked) {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Locked segment' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('lockedSegment') });
             return;
         }
         if (this.currentRow) {
@@ -3471,7 +3471,7 @@ export class TranslationView {
             let currentTranslate: HTMLTableCellElement = this.currentRow.getElementsByClassName('translate')[0] as HTMLTableCellElement;
             let isLocked: boolean = currentTranslate.innerHTML.includes(TranslationView.LOCK_FRAGMENT);
             if (isLocked) {
-                ipcRenderer.send('show-message', { type: 'warning', message: 'Locked segment' });
+                ipcRenderer.send('show-message', { type: 'warning', message: t('lockedSegment') });
                 return;
             }
             let nextRow: HTMLTableRowElement = this.currentRow.nextElementSibling as HTMLTableRowElement;
@@ -3482,7 +3482,7 @@ export class TranslationView {
                         return;
                     }
                     if (nextRow.getElementsByClassName('translate')[0].innerHTML.includes(TranslationView.LOCK_FRAGMENT)) {
-                        ipcRenderer.send('show-message', { type: 'warning', message: 'Locked segment' });
+                        ipcRenderer.send('show-message', { type: 'warning', message: t('lockedSegment') });
                         return;
                     }
                     this.returnTo = {

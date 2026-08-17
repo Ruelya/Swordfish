@@ -11,6 +11,8 @@
  *******************************************************************************/
 
 import { ipcRenderer, IpcRendererEvent } from "electron";
+import { defaultCustomAi } from "./customAITranslator.js";
+import { setAppLang, t } from "./i18n.js";
 import { Preferences } from "./preferences.js";
 import { Tab, TabHolder } from "./tabs.js";
 import { Language } from "typesbcp47";
@@ -25,6 +27,7 @@ export class PreferencesDialog {
     srcLangSelect: HTMLSelectElement = document.createElement('select');
     tgtLangSelect: HTMLSelectElement = document.createElement('select');
     themeColor: HTMLSelectElement = document.createElement('select');
+    appLangSelect: HTMLSelectElement = document.createElement('select');
     zoomFactor: HTMLSelectElement = document.createElement('select');
     userNameInput: HTMLInputElement = document.createElement('input');
     matchThreshold: HTMLInputElement = document.createElement('input');
@@ -94,6 +97,17 @@ export class PreferencesDialog {
     ollamaFixTags: HTMLInputElement = document.createElement('input');
     ollamaThink: HTMLInputElement = document.createElement('input');
 
+    enableCustomAi: HTMLInputElement = document.createElement('input');
+    customAiName: HTMLInputElement = document.createElement('input');
+    customAiBaseUrl: HTMLInputElement = document.createElement('input');
+    customAiKey: HTMLInputElement = document.createElement('input');
+    customAiModel: HTMLInputElement = document.createElement('input');
+    customAiFormat: HTMLSelectElement = document.createElement('select');
+    customAiTemplate: HTMLTextAreaElement = document.createElement('textarea');
+    customAiResponsePath: HTMLInputElement = document.createElement('input');
+    customAiHeaders: HTMLTextAreaElement = document.createElement('textarea');
+    customAiFixTags: HTMLInputElement = document.createElement('input');
+
     defaultEnglish: HTMLSelectElement = document.createElement('select');
     defaultPortuguese: HTMLSelectElement = document.createElement('select');
     defaultSpanish: HTMLSelectElement = document.createElement('select');
@@ -111,10 +125,16 @@ export class PreferencesDialog {
     constructor() {
 
         document.body.classList.add("wait");
+        setAppLang(ipcRenderer.sendSync('get-app-lang'));
+        document.title = t('preferences');
+        let saveButton: HTMLButtonElement | null = document.getElementById('save') as HTMLButtonElement | null;
+        if (saveButton) {
+            saveButton.innerText = t('savePreferences');
+        }
 
         this.tabHolder = new TabHolder(document.getElementById('main') as HTMLDivElement, "preferencesHolder");
 
-        let basicTab: Tab = new Tab('basicTab', 'Basic', false, this.tabHolder);
+        let basicTab: Tab = new Tab('basicTab', t('basic'), false, this.tabHolder);
         basicTab.getLabelDiv().addEventListener('click', () => {
             setTimeout(() => {
                 ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
@@ -123,7 +143,7 @@ export class PreferencesDialog {
         this.tabHolder.addTab(basicTab);
         this.populateBasicTab(basicTab.getContainer());
 
-        let mtTab: Tab = new Tab('mtTab', 'Machine Translation', false, this.tabHolder);
+        let mtTab: Tab = new Tab('mtTab', t('machineTranslation'), false, this.tabHolder);
         mtTab.getLabelDiv().addEventListener('click', () => {
             this.requestModelSuggestions();
             setTimeout(() => {
@@ -133,7 +153,7 @@ export class PreferencesDialog {
         this.tabHolder.addTab(mtTab);
         this.populateMtTab(mtTab.getContainer());
 
-        this.spellcheckTab = new Tab('spellcheckTab', 'Spellchecker', false, this.tabHolder);
+        this.spellcheckTab = new Tab('spellcheckTab', t('spellchecker'), false, this.tabHolder);
         this.spellcheckTab.getLabelDiv().addEventListener('click', () => {
             setTimeout(() => {
                 ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
@@ -141,7 +161,7 @@ export class PreferencesDialog {
         });
         this.tabHolder.addTab(this.spellcheckTab);
 
-        let advancedTab: Tab = new Tab('advancedTab', 'Advanced', false, this.tabHolder);
+        let advancedTab: Tab = new Tab('advancedTab', t('advanced'), false, this.tabHolder);
         advancedTab.getLabelDiv().addEventListener('click', () => {
             setTimeout(() => {
                 ipcRenderer.send('set-height', { window: 'preferences', width: PreferencesDialog.defaultWidth, height: document.body.clientHeight });
@@ -236,6 +256,7 @@ export class PreferencesDialog {
 
     setPreferences(preferences: Preferences): void {
         this.themeColor.value = preferences.theme;
+        this.appLangSelect.value = preferences.appLang === 'en' ? 'en' : 'zh';
         this.srcLangSelect.value = preferences.srcLang;
         this.tgtLangSelect.value = preferences.tgtLang;
         this.zoomFactor.value = preferences.zoomFactor;
@@ -390,6 +411,22 @@ export class PreferencesDialog {
             this.modernmtTgtLang.disabled = !this.enableModernmt.checked;
         });
 
+        let customAi = preferences.customAi || defaultCustomAi();
+        this.enableCustomAi.checked = customAi.enabled;
+        this.customAiName.value = customAi.name;
+        this.customAiBaseUrl.value = customAi.baseUrl;
+        this.customAiKey.value = customAi.apiKey;
+        this.customAiModel.value = customAi.model;
+        this.customAiFormat.value = customAi.format || 'openai-chat';
+        this.customAiTemplate.value = customAi.requestTemplate;
+        this.customAiResponsePath.value = customAi.responsePath;
+        this.customAiHeaders.value = customAi.extraHeaders;
+        this.customAiFixTags.checked = customAi.fixTags;
+        this.setCustomAiEnabled(customAi.enabled);
+        this.enableCustomAi.addEventListener('change', () => {
+            this.setCustomAiEnabled(this.enableCustomAi.checked);
+        });
+
         this.os = preferences.os;
         this.showGuide = preferences.showGuide;
         this.pageRows.value = preferences.pageRows.toString();
@@ -489,15 +526,50 @@ export class PreferencesDialog {
             return;
         }
         if (this.enableModernmt.checked && (this.modernmtSrcLang.value === 'none' || this.modernmtTgtLang.value === 'none')) {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Select ModernMT languages', parent: 'preferences' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectModernmtLangs'), parent: 'preferences' });
             return;
+        }
+        if (this.enableCustomAi.checked && this.customAiBaseUrl.value.trim() === '') {
+            ipcRenderer.send('show-message', { type: 'warning', message: t('enterCustomBaseUrl'), parent: 'preferences' });
+            return;
+        }
+        if (this.enableCustomAi.checked && this.customAiModel.value.trim() === '') {
+            ipcRenderer.send('show-message', { type: 'warning', message: t('enterCustomModel'), parent: 'preferences' });
+            return;
+        }
+        if (this.enableCustomAi.checked && this.customAiFormat.value === 'custom') {
+            if (this.customAiTemplate.value.trim() === '') {
+                ipcRenderer.send('show-message', { type: 'warning', message: t('invalidRequestTemplate'), parent: 'preferences' });
+                return;
+            }
+            try {
+                JSON.parse(this.customAiTemplate.value);
+            } catch (_error) {
+                ipcRenderer.send('show-message', { type: 'warning', message: t('invalidRequestTemplate'), parent: 'preferences' });
+                return;
+            }
+            if (this.customAiResponsePath.value.trim() === '') {
+                ipcRenderer.send('show-message', { type: 'warning', message: t('invalidResponsePath'), parent: 'preferences' });
+                return;
+            }
+        }
+        if (this.customAiHeaders.value.trim() !== '') {
+            try {
+                let headers: unknown = JSON.parse(this.customAiHeaders.value);
+                if (!headers || typeof headers !== 'object' || Array.isArray(headers)) {
+                    throw new Error('invalid');
+                }
+            } catch (_error) {
+                ipcRenderer.send('show-message', { type: 'warning', message: t('invalidExtraHeaders'), parent: 'preferences' });
+                return;
+            }
         }
 
         let prefs: Preferences = {
             srcLang: this.srcLangSelect.value,
             tgtLang: this.tgtLangSelect.value,
             theme: this.themeColor.value,
-            appLang: 'en', // Application language preference hardcoded to 'en' for now
+            appLang: this.appLangSelect.value === 'en' ? 'en' : 'zh',
             zoomFactor: this.zoomFactor.value,
             userName: this.userNameInput.value,
             catalog: this.defaultCatalog.value,
@@ -575,6 +647,18 @@ export class PreferencesDialog {
                 srcLang: this.modernmtSrcLang.value,
                 tgtLang: this.modernmtTgtLang.value
             },
+            customAi: {
+                enabled: this.enableCustomAi.checked,
+                name: this.customAiName.value.trim() || 'Custom AI',
+                baseUrl: this.customAiBaseUrl.value.trim(),
+                apiKey: this.customAiKey.value,
+                model: this.customAiModel.value.trim(),
+                format: this.customAiFormat.value,
+                requestTemplate: this.customAiTemplate.value,
+                responsePath: this.customAiResponsePath.value.trim(),
+                extraHeaders: this.customAiHeaders.value,
+                fixTags: this.customAiFixTags.checked
+            },
             spellchecker: {
                 defaultEnglish: 'en-US',
                 defaultPortuguese: 'pt-BR',
@@ -609,7 +693,7 @@ export class PreferencesDialog {
 
         let srcLangLabel: HTMLLabelElement = document.createElement('label');
         srcLangLabel.setAttribute('for', 'srcLangSelect');
-        srcLangLabel.innerText = 'Default Source Language';
+        srcLangLabel.innerText = t('defaultSourceLanguage');
         td.appendChild(srcLangLabel);
 
         td = document.createElement('td');
@@ -632,7 +716,7 @@ export class PreferencesDialog {
 
         let tgtLangLabel: HTMLLabelElement = document.createElement('label');
         tgtLangLabel.setAttribute('for', 'tgtLangSelect');
-        tgtLangLabel.innerText = 'Default Target Language';
+        tgtLangLabel.innerText = t('defaultTargetLanguage');
         td.appendChild(tgtLangLabel);
 
         td = document.createElement('td');
@@ -655,7 +739,7 @@ export class PreferencesDialog {
 
         let matchThresholdLabel: HTMLLabelElement = document.createElement('label');
         matchThresholdLabel.setAttribute('for', 'matchThreshold');
-        matchThresholdLabel.innerText = 'Match Threshold (%)';
+        matchThresholdLabel.innerText = t('matchThreshold');
         td.appendChild(matchThresholdLabel);
 
         td = document.createElement('td');
@@ -682,7 +766,7 @@ export class PreferencesDialog {
 
         let themeLabel: HTMLLabelElement = document.createElement('label');
         themeLabel.setAttribute('for', 'themeColor');
-        themeLabel.innerText = 'Theme';
+        themeLabel.innerText = t('theme');
         td.appendChild(themeLabel);
 
         td = document.createElement('td');
@@ -691,10 +775,10 @@ export class PreferencesDialog {
 
         this.themeColor = document.createElement('select');
         this.themeColor.id = 'themeColor';
-        this.themeColor.innerHTML = '<option value="system">System Default</option>' +
-            '<option value="dark">Dark</option>' +
-            '<option value="light">Light</option>' +
-            '<option value="highcontrast">High Contrast</option>';
+        this.themeColor.innerHTML = '<option value="system">' + t('systemDefault') + '</option>' +
+            '<option value="dark">' + t('dark') + '</option>' +
+            '<option value="light">' + t('light') + '</option>' +
+            '<option value="highcontrast">' + t('highContrast') + '</option>';
         td.appendChild(this.themeColor);
 
         tr = document.createElement('tr');
@@ -707,7 +791,7 @@ export class PreferencesDialog {
 
         let zoomLabel: HTMLLabelElement = document.createElement('label');
         zoomLabel.setAttribute('for', 'zoomFactor');
-        zoomLabel.innerText = 'Font Size';
+        zoomLabel.innerText = t('fontSize');
         td.appendChild(zoomLabel);
 
         td = document.createElement('td');
@@ -717,11 +801,11 @@ export class PreferencesDialog {
         this.zoomFactor = document.createElement('select');
         this.zoomFactor.id = 'zoomFactor';
         this.zoomFactor.innerHTML =
-            '<option value="0.8">Small</option>' +
-            '<option value="1.0">Medium</option>' +
-            '<option value="1.2">Large</option>' +
-            '<option value="1.4">Very Large</option>' +
-            '<option value="1.8">Extra Large</option>';
+            '<option value="0.8">' + t('small') + '</option>' +
+            '<option value="1.0">' + t('medium') + '</option>' +
+            '<option value="1.2">' + t('large') + '</option>' +
+            '<option value="1.4">' + t('veryLarge') + '</option>' +
+            '<option value="1.8">' + t('extraLarge') + '</option>';
         td.appendChild(this.zoomFactor);
 
         tr = document.createElement('tr');
@@ -734,7 +818,7 @@ export class PreferencesDialog {
 
         let rowsLabel: HTMLLabelElement = document.createElement('label');
         rowsLabel.setAttribute('for', 'pageRows');
-        rowsLabel.innerText = 'Rows per Page';
+        rowsLabel.innerText = t('rowsPerPage');
         td.appendChild(rowsLabel);
 
         td = document.createElement('td');
@@ -760,7 +844,7 @@ export class PreferencesDialog {
 
         let userNameLabel: HTMLLabelElement = document.createElement('label');
         userNameLabel.setAttribute('for', 'userNameInput');
-        userNameLabel.innerText = 'Default User Name';
+        userNameLabel.innerText = t('defaultUserName');
         td.appendChild(userNameLabel);
 
         td = document.createElement('td');
@@ -769,6 +853,27 @@ export class PreferencesDialog {
 
         this.userNameInput.id = 'userNameInput';
         td.appendChild(this.userNameInput);
+
+        tr = document.createElement('tr');
+        langsTable.appendChild(tr);
+
+        td = document.createElement('td');
+        td.classList.add('middle');
+        td.classList.add('noWrap');
+        tr.appendChild(td);
+
+        let appLangLabel: HTMLLabelElement = document.createElement('label');
+        appLangLabel.setAttribute('for', 'appLangSelect');
+        appLangLabel.innerText = t('appLanguage');
+        td.appendChild(appLangLabel);
+
+        td = document.createElement('td');
+        td.classList.add('middle');
+        tr.appendChild(td);
+
+        this.appLangSelect.id = 'appLangSelect';
+        this.appLangSelect.innerHTML = '<option value="zh">' + t('chinese') + '</option><option value="en">' + t('english') + '</option>';
+        td.appendChild(this.appLangSelect);
     }
 
     populateSpellcheckTab(container: HTMLDivElement, spellchecker: any): void {
@@ -1460,6 +1565,24 @@ export class PreferencesDialog {
         modernmtLabel.style.marginTop = '4px';
         radioRow.appendChild(modernmtLabel);
 
+        radioRow = document.createElement('div');
+        radioRow.classList.add('row');
+        radioRow.classList.add('middle');
+        leftSide.appendChild(radioRow);
+
+        let customAiRadio: HTMLInputElement = document.createElement('input');
+        customAiRadio.type = 'radio';
+        customAiRadio.name = 'mtProvider';
+        customAiRadio.id = 'customAiRadio';
+        customAiRadio.style.margin = '4px';
+        radioRow.appendChild(customAiRadio);
+
+        let customAiLabel: HTMLLabelElement = document.createElement('label');
+        customAiLabel.setAttribute('for', 'customAiRadio');
+        customAiLabel.innerText = t('customAi');
+        customAiLabel.style.marginTop = '4px';
+        radioRow.appendChild(customAiLabel);
+
         let rightSide: HTMLDivElement = document.createElement('div');
         rightSide.classList.add('fill_width');
         rightSide.style.marginRight = '16px';
@@ -1526,6 +1649,12 @@ export class PreferencesDialog {
         rightSide.appendChild(modernmtTab);
         this.populateModernmtTab(modernmtTab);
 
+        let customAiTab: HTMLDivElement = document.createElement('div');
+        customAiTab.id = 'customAiTab';
+        customAiTab.style.display = 'none';
+        rightSide.appendChild(customAiTab);
+        this.populateCustomAiTab(customAiTab);
+
         googleRadio.addEventListener('change', () => {
             this.toggleTab('googleTab');
         });
@@ -1556,11 +1685,14 @@ export class PreferencesDialog {
         modernmtRadio.addEventListener('change', () => {
             this.toggleTab('modernmtTab');
         });
+        customAiRadio.addEventListener('change', () => {
+            this.toggleTab('customAiTab');
+        });
     }
 
     toggleTab(tabId: string): void {
         const tabs: string[] = ['googleTab', 'azureTab', 'deeplTab',
-            'chatGptTab', 'mistralTab', 'qwenTab', 'ollamaTab', 'anthropicTab', 'geminiTab', 'modernmtTab'];
+            'chatGptTab', 'mistralTab', 'qwenTab', 'ollamaTab', 'anthropicTab', 'geminiTab', 'modernmtTab', 'customAiTab'];
         tabs.forEach((id) => {
             const tab = document.getElementById(id);
             if (tab) {
@@ -2336,6 +2468,141 @@ export class PreferencesDialog {
         this.modernmtKey = document.getElementById('modernmtKey') as HTMLInputElement;
         this.modernmtSrcLang = document.getElementById('modernmtSrcLang') as HTMLSelectElement;
         this.modernmtTgtLang = document.getElementById('modernmtTgtLang') as HTMLSelectElement;
+    }
+
+    setCustomAiEnabled(enabled: boolean): void {
+        this.customAiName.disabled = !enabled;
+        this.customAiBaseUrl.disabled = !enabled;
+        this.customAiKey.disabled = !enabled;
+        this.customAiModel.disabled = !enabled;
+        this.customAiFormat.disabled = !enabled;
+        this.customAiTemplate.disabled = !enabled;
+        this.customAiResponsePath.disabled = !enabled;
+        this.customAiHeaders.disabled = !enabled;
+        this.customAiFixTags.disabled = !enabled;
+    }
+
+    populateCustomAiTab(container: HTMLDivElement): void {
+        container.style.paddingTop = '10px';
+
+        let enableRow: HTMLDivElement = document.createElement('div');
+        enableRow.classList.add('middle');
+        enableRow.classList.add('row');
+        enableRow.style.paddingLeft = '4px';
+        this.enableCustomAi.type = 'checkbox';
+        this.enableCustomAi.id = 'enableCustomAi';
+        enableRow.appendChild(this.enableCustomAi);
+        let enableLabel: HTMLLabelElement = document.createElement('label');
+        enableLabel.setAttribute('for', 'enableCustomAi');
+        enableLabel.style.paddingTop = '4px';
+        enableLabel.innerText = t('enableCustomAi');
+        enableRow.appendChild(enableLabel);
+        container.appendChild(enableRow);
+
+        let table: HTMLTableElement = document.createElement('table');
+        table.classList.add('fill_width');
+        container.appendChild(table);
+
+        let addRow = (labelText: string, control: HTMLElement): void => {
+            let tr: HTMLTableRowElement = document.createElement('tr');
+            table.appendChild(tr);
+            let td: HTMLTableCellElement = document.createElement('td');
+            td.classList.add('middle');
+            td.classList.add('noWrap');
+            td.innerText = labelText;
+            tr.appendChild(td);
+            td = document.createElement('td');
+            td.classList.add('middle');
+            td.classList.add('fill_width');
+            td.appendChild(control);
+            tr.appendChild(td);
+        };
+
+        this.customAiName.id = 'customAiName';
+        this.customAiName.classList.add('table_input');
+        addRow(t('providerName'), this.customAiName);
+
+        this.customAiBaseUrl.id = 'customAiBaseUrl';
+        this.customAiBaseUrl.classList.add('table_input');
+        this.customAiBaseUrl.placeholder = 'https://api.openai.com/v1';
+        addRow(t('apiBaseUrl'), this.customAiBaseUrl);
+
+        this.customAiKey.id = 'customAiKey';
+        this.customAiKey.classList.add('table_input');
+        addRow(t('apiKey'), this.customAiKey);
+
+        this.customAiModel.id = 'customAiModel';
+        this.customAiModel.classList.add('table_input');
+        addRow(t('model'), this.customAiModel);
+
+        this.customAiFormat.id = 'customAiFormat';
+        this.customAiFormat.classList.add('table_select');
+        this.customAiFormat.innerHTML =
+            '<option value="openai-chat">' + t('formatOpenAiChat') + '</option>' +
+            '<option value="openai-completions">' + t('formatOpenAiCompletions') + '</option>' +
+            '<option value="anthropic">' + t('formatAnthropic') + '</option>' +
+            '<option value="gemini">' + t('formatGemini') + '</option>' +
+            '<option value="ollama">' + t('formatOllama') + '</option>' +
+            '<option value="custom">' + t('formatCustom') + '</option>';
+        addRow(t('requestFormat'), this.customAiFormat);
+
+        this.customAiTemplate.id = 'customAiTemplate';
+        this.customAiTemplate.classList.add('table_input');
+        this.customAiTemplate.rows = 5;
+        this.customAiTemplate.style.width = '100%';
+        addRow(t('requestTemplate'), this.customAiTemplate);
+
+        this.customAiResponsePath.id = 'customAiResponsePath';
+        this.customAiResponsePath.classList.add('table_input');
+        this.customAiResponsePath.placeholder = 'choices.0.message.content';
+        addRow(t('responsePath'), this.customAiResponsePath);
+
+        this.customAiHeaders.id = 'customAiHeaders';
+        this.customAiHeaders.classList.add('table_input');
+        this.customAiHeaders.rows = 3;
+        this.customAiHeaders.style.width = '100%';
+        addRow(t('extraHeaders'), this.customAiHeaders);
+
+        let tagsRow: HTMLDivElement = document.createElement('div');
+        tagsRow.classList.add('row');
+        tagsRow.classList.add('middle');
+        container.appendChild(tagsRow);
+        this.customAiFixTags.id = 'customAiFixTags';
+        this.customAiFixTags.type = 'checkbox';
+        tagsRow.appendChild(this.customAiFixTags);
+        let fixLabel: HTMLLabelElement = document.createElement('label');
+        fixLabel.setAttribute('for', 'customAiFixTags');
+        fixLabel.style.paddingTop = '4px';
+        fixLabel.innerText = t('useToFixTags');
+        tagsRow.appendChild(fixLabel);
+
+        let hint: HTMLParagraphElement = document.createElement('p');
+        hint.className = 'hint';
+        hint.innerText = t('customAiHint');
+        container.appendChild(hint);
+
+        let testButton: HTMLButtonElement = document.createElement('button');
+        testButton.innerText = t('testConnection');
+        testButton.addEventListener('click', () => {
+            ipcRenderer.send('test-custom-ai', {
+                name: this.customAiName.value,
+                baseUrl: this.customAiBaseUrl.value,
+                apiKey: this.customAiKey.value,
+                model: this.customAiModel.value,
+                format: this.customAiFormat.value,
+                requestTemplate: this.customAiTemplate.value,
+                responsePath: this.customAiResponsePath.value,
+                extraHeaders: this.customAiHeaders.value
+            });
+        });
+        container.appendChild(testButton);
+        ipcRenderer.on('custom-ai-tested', (_event: IpcRendererEvent, result: any) => {
+            if (result.ok) {
+                ipcRenderer.send('show-message', { type: 'info', message: t('customAiConnected', result.sample || 'OK'), parent: 'preferences' });
+            } else {
+                ipcRenderer.send('show-message', { type: 'error', message: t('customAiFailed', result.message || ''), parent: 'preferences' });
+            }
+        });
     }
 
     requestModelSuggestions(): void {

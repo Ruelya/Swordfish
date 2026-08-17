@@ -14,6 +14,7 @@ import { AnthropicTranslator, AzureTranslator, ChatGPTTranslator, DeepLTranslato
 import { Language, LanguageUtils } from "typesbcp47";
 import { SAXParser, XMLElement } from "typesxml";
 import { MTContentHandler } from "./mtContentHandler.js";
+import { CustomAITranslator, CustomAiConfig } from "./customAITranslator.js";
 import { Preferences } from "./preferences.js";
 import { SegmentId } from "./segmentId.js";
 import { Swordfish } from "./Swordfish.js";
@@ -213,6 +214,27 @@ export class MTManager {
             this.mtEngines.push(ollamaTranslator);
             if (preferences.ollama.fixTags) {
                 this.tagFixer = ollamaTranslator;
+            }
+        }
+        if (preferences.customAi && preferences.customAi.enabled) {
+            let customConfig: CustomAiConfig = {
+                enabled: preferences.customAi.enabled,
+                name: preferences.customAi.name,
+                baseUrl: preferences.customAi.baseUrl,
+                apiKey: preferences.customAi.apiKey,
+                model: preferences.customAi.model,
+                format: (preferences.customAi.format as CustomAiConfig['format']) || 'openai-chat',
+                requestTemplate: preferences.customAi.requestTemplate,
+                responsePath: preferences.customAi.responsePath,
+                extraHeaders: preferences.customAi.extraHeaders,
+                fixTags: preferences.customAi.fixTags
+            };
+            let customTranslator: CustomAITranslator = new CustomAITranslator(customConfig);
+            customTranslator.setSourceLanguage(srcLang);
+            customTranslator.setTargetLanguage(tgtLang);
+            this.mtEngines.push(customTranslator);
+            if (preferences.customAi.fixTags) {
+                this.tagFixer = customTranslator;
             }
         }
     }
