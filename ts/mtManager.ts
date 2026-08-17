@@ -15,6 +15,7 @@ import { Language, LanguageUtils } from "typesbcp47";
 import { SAXParser, XMLElement } from "typesxml";
 import { MTContentHandler } from "./mtContentHandler.js";
 import { CustomAITranslator, CustomAiConfig } from "./customAITranslator.js";
+import { MtEngineId, normalizeSelectedEngines } from "./mtEngineSelection.js";
 import { Preferences } from "./preferences.js";
 import { SegmentId } from "./segmentId.js";
 import { Swordfish } from "./Swordfish.js";
@@ -123,7 +124,7 @@ export class MTManager {
     };
     currentSegment: SegmentId;
 
-    constructor(preferences: Preferences, srcLang: string, tgtLang: string) {
+    constructor(preferences: Preferences, srcLang: string, tgtLang: string, selectedEngines?: string[]) {
         this.currentSegment = { file: '', unit: '', id: '' };
         this.mtEngines = [];
         this.srcLang = srcLang;
@@ -134,30 +135,42 @@ export class MTManager {
         this.matchUpdateLimiter = new ConcurrencyLimiter(DEFAULT_MATCH_UPDATE_CONCURRENCY);
         this.translationRetryOptions = { ...DEFAULT_TRANSLATION_RETRY_OPTIONS };
         this.matchUpdateRetryOptions = { ...DEFAULT_MATCH_UPDATE_RETRY_OPTIONS };
+        let activeEngines: MtEngineId[] = normalizeSelectedEngines(preferences, selectedEngines ?? preferences.selectedMtEngines);
+        let useEngine = (id: MtEngineId): boolean => {
+            return activeEngines.indexOf(id) >= 0;
+        };
         if (preferences.google.enabled) {
             let googleTranslator: GoogleTranslator = new GoogleTranslator(preferences.google.apiKey);
             googleTranslator.setSourceLanguage(preferences.google.srcLang);
             googleTranslator.setTargetLanguage(preferences.google.tgtLang);
-            this.mtEngines.push(googleTranslator);
+            if (useEngine('google')) {
+                this.mtEngines.push(googleTranslator);
+            }
         }
         if (preferences.azure.enabled) {
             let azureTranslator: AzureTranslator = new AzureTranslator(preferences.azure.apiKey);
             azureTranslator.setSourceLanguage(preferences.azure.srcLang);
             azureTranslator.setTargetLanguage(preferences.azure.tgtLang);
-            this.mtEngines.push(azureTranslator);
+            if (useEngine('azure')) {
+                this.mtEngines.push(azureTranslator);
+            }
         }
         if (preferences.deepl.enabled) {
             let deeplTranslator: DeepLTranslator = new DeepLTranslator(preferences.deepl.apiKey);
             deeplTranslator.setSourceLanguage(preferences.deepl.srcLang);
             deeplTranslator.setTargetLanguage(preferences.deepl.tgtLang);
-            this.mtEngines.push(deeplTranslator);
+            if (useEngine('deepl')) {
+                this.mtEngines.push(deeplTranslator);
+            }
         }
         if (preferences.chatGpt.enabled) {
             let chatGptTranslator: ChatGPTTranslator = new ChatGPTTranslator(preferences.chatGpt.apiKey, preferences.chatGpt.model);
             chatGptTranslator.setSourceLanguage(srcLang);
             chatGptTranslator.setTargetLanguage(tgtLang);
             chatGptTranslator.setModel(preferences.chatGpt.model);
-            this.mtEngines.push(chatGptTranslator);
+            if (useEngine('chatGpt')) {
+                this.mtEngines.push(chatGptTranslator);
+            }
             if (preferences.chatGpt.fixTags) {
                 this.tagFixer = chatGptTranslator;
             }
@@ -167,7 +180,9 @@ export class MTManager {
             anthropicTranslator.setSourceLanguage(srcLang);
             anthropicTranslator.setTargetLanguage(tgtLang);
             anthropicTranslator.setModel(preferences.anthropic.model);
-            this.mtEngines.push(anthropicTranslator);
+            if (useEngine('anthropic')) {
+                this.mtEngines.push(anthropicTranslator);
+            }
             if (preferences.anthropic.fixTags) {
                 this.tagFixer = anthropicTranslator;
             }
@@ -176,14 +191,18 @@ export class MTManager {
             let modernmtTranslator: ModernMTTranslator = new ModernMTTranslator(preferences.modernmt.apiKey);
             modernmtTranslator.setSourceLanguage(preferences.modernmt.srcLang);
             modernmtTranslator.setTargetLanguage(preferences.modernmt.tgtLang);
-            this.mtEngines.push(modernmtTranslator);
+            if (useEngine('modernmt')) {
+                this.mtEngines.push(modernmtTranslator);
+            }
         }
         if (preferences.mistral.enabled) {
             let mistralTranslator: MistralTranslator = new MistralTranslator(preferences.mistral.apiKey);
             mistralTranslator.setSourceLanguage(srcLang);
             mistralTranslator.setTargetLanguage(tgtLang);
             mistralTranslator.setModel(preferences.mistral.model);
-            this.mtEngines.push(mistralTranslator);
+            if (useEngine('mistral')) {
+                this.mtEngines.push(mistralTranslator);
+            }
             if (preferences.mistral.fixTags) {
                 this.tagFixer = mistralTranslator;
             }
@@ -193,7 +212,9 @@ export class MTManager {
             geminiTranslator.setSourceLanguage(srcLang);
             geminiTranslator.setTargetLanguage(tgtLang);
             geminiTranslator.setModel(preferences.gemini.model);
-            this.mtEngines.push(geminiTranslator);
+            if (useEngine('gemini')) {
+                this.mtEngines.push(geminiTranslator);
+            }
             if (preferences.gemini.fixTags) {
                 this.tagFixer = geminiTranslator;
             }
@@ -202,7 +223,9 @@ export class MTManager {
             let qwenTranslator: QwenTranslator = new QwenTranslator(preferences.qwen.apiKey, preferences.qwen.region, preferences.qwen.model);
             qwenTranslator.setSourceLanguage(srcLang);
             qwenTranslator.setTargetLanguage(tgtLang);
-            this.mtEngines.push(qwenTranslator);
+            if (useEngine('qwen')) {
+                this.mtEngines.push(qwenTranslator);
+            }
             if (preferences.qwen.fixTags) {
                 this.tagFixer = qwenTranslator;
             }
@@ -211,7 +234,9 @@ export class MTManager {
             let ollamaTranslator: OllamaTranslator = new OllamaTranslator(preferences.ollama.url, preferences.ollama.model, preferences.ollama.think);
             ollamaTranslator.setSourceLanguage(srcLang);
             ollamaTranslator.setTargetLanguage(tgtLang);
-            this.mtEngines.push(ollamaTranslator);
+            if (useEngine('ollama')) {
+                this.mtEngines.push(ollamaTranslator);
+            }
             if (preferences.ollama.fixTags) {
                 this.tagFixer = ollamaTranslator;
             }
@@ -232,7 +257,9 @@ export class MTManager {
             let customTranslator: CustomAITranslator = new CustomAITranslator(customConfig);
             customTranslator.setSourceLanguage(srcLang);
             customTranslator.setTargetLanguage(tgtLang);
-            this.mtEngines.push(customTranslator);
+            if (useEngine('customAi')) {
+                this.mtEngines.push(customTranslator);
+            }
             if (preferences.customAi.fixTags) {
                 this.tagFixer = customTranslator;
             }

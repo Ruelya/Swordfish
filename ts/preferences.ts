@@ -115,4 +115,5 @@ export interface Preferences {
     showGuide: boolean;
     pageRows: number;
     inlineSuggest: InlineSuggestPreferences;
+    selectedMtEngines?: string[];
 }

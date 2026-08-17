@@ -17,6 +17,7 @@ export class AiPreTranslate {
 
     memSelect: HTMLSelectElement;
     penalty: HTMLInputElement;
+    engineList: HTMLDivElement;
     project: string = '';
     srcLang: string = '';
     tgtLang: string = '';
@@ -25,6 +26,7 @@ export class AiPreTranslate {
         setAppLang(ipcRenderer.sendSync('get-app-lang'));
         this.memSelect = document.getElementById('memorySelect') as HTMLSelectElement;
         this.penalty = document.getElementById('penalty') as HTMLInputElement;
+        this.engineList = document.getElementById('engineCheckList') as HTMLDivElement;
         this.penalty.value = '0';
 
         (document.getElementById('titleText') as HTMLSpanElement).innerText = t('preTranslateTitle');
@@ -36,6 +38,7 @@ export class AiPreTranslate {
         (document.getElementById('thenAiTranslateLabel') as HTMLLabelElement).innerText = t('thenAiTranslate');
         (document.getElementById('autoAcceptAiLabel') as HTMLLabelElement).innerText = t('autoAcceptAi');
         (document.getElementById('autoConfirmAiLabel') as HTMLLabelElement).innerText = t('autoConfirmAi');
+        (document.getElementById('engineSelectLabel') as HTMLLabelElement).innerText = t('selectMtEngines');
         (document.getElementById('startButton') as HTMLButtonElement).innerText = t('startPreTranslate');
 
         ipcRenderer.send('get-theme');
@@ -65,6 +68,7 @@ export class AiPreTranslate {
             if (ctx.memory) {
                 this.memSelect.value = ctx.memory;
             }
+            this.setEngines(ctx.engines || [], ctx.selectedMtEngines || []);
         });
         this.penalty.addEventListener('keydown', (event: KeyboardEvent) => {
             let numberKeys: string[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Backspace', 'Delete', 'Escape', 'Enter', 'NumpadEnter'];
@@ -93,6 +97,11 @@ export class AiPreTranslate {
             ipcRenderer.send('show-message', { type: 'warning', message: t('thenAiTranslate'), parent: 'aiPreTranslate' });
             return;
         }
+        let selectedMtEngines: string[] = this.selectedEngineIds();
+        if (thenAiTranslate && selectedMtEngines.length === 0) {
+            ipcRenderer.send('show-message', { type: 'warning', message: t('noMtEngineSelected'), parent: 'aiPreTranslate' });
+            return;
+        }
         if (this.penalty.value.length === 0) {
             this.penalty.value = '0';
         }
@@ -110,8 +119,48 @@ export class AiPreTranslate {
             applyTmFirst: applyTmFirst,
             thenAiTranslate: thenAiTranslate,
             autoAcceptAi: autoAcceptAi,
-            autoConfirmAi: autoConfirmAi
+            autoConfirmAi: autoConfirmAi,
+            selectedMtEngines: selectedMtEngines
         });
+    }
+
+    setEngines(engines: Array<{ id: string; label: string; enabled: boolean }>, selected: string[]): void {
+        this.engineList.innerHTML = '';
+        let enabled: Array<{ id: string; label: string; enabled: boolean }> = engines.filter((engine) => engine.enabled);
+        if (enabled.length === 0) {
+            let empty: HTMLDivElement = document.createElement('div');
+            empty.classList.add('hint');
+            empty.innerText = t('preTranslateNeedEngine');
+            this.engineList.appendChild(empty);
+            return;
+        }
+        for (let engine of enabled) {
+            let row: HTMLDivElement = document.createElement('div');
+            row.classList.add('row');
+            row.classList.add('middle');
+            let check: HTMLInputElement = document.createElement('input');
+            check.type = 'checkbox';
+            check.id = 'engine-' + engine.id;
+            check.value = engine.id;
+            check.checked = selected.length === 0 || selected.indexOf(engine.id) >= 0;
+            let label: HTMLLabelElement = document.createElement('label');
+            label.setAttribute('for', check.id);
+            label.innerText = engine.label;
+            row.appendChild(check);
+            row.appendChild(label);
+            this.engineList.appendChild(row);
+        }
+    }
+
+    selectedEngineIds(): string[] {
+        let selected: string[] = [];
+        let boxes: NodeListOf<HTMLInputElement> = this.engineList.querySelectorAll('input[type="checkbox"]');
+        boxes.forEach((box: HTMLInputElement) => {
+            if (box.checked) {
+                selected.push(box.value);
+            }
+        });
+        return selected;
     }
 
     setMemories(memories: any[]): void {

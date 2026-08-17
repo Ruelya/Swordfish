@@ -1737,7 +1737,8 @@ public class ProjectsHandler implements HttpHandler {
 			JSONObject json = new JSONObject(request);
 			String project = json.getString("project");
 			if (projectStores.containsKey(project)) {
-				projectStores.get(project).acceptAllMT();
+				String origin = json.has("origin") ? json.optString("origin", "") : "";
+				projectStores.get(project).acceptAllMT(origin);
 				JSONObject status = projectStores.get(project).getTranslationStatus();
 				result.put("statistics", status);
 				updateProjectStatus(project, status.getInt("percentage"));
