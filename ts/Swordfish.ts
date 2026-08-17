@@ -18,13 +18,13 @@ import { userInfo } from "node:os";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { TMReader, TMReaderResult } from "sdltm";
-import { LanguageUtils } from "typesbcp47";
+import { loadCommonLanguages } from "./languageLists.js";
 import { XMLElement } from "typesxml";
 import { Locations, Point } from "./locations.js";
 import { Match } from "./match.js";
 import { MetaData, MetaId } from "./metadata.js";
 import { MTManager } from "./mtManager.js";
-import { Preferences } from "./preferences.js";
+import { normalizeMatchThreshold, normalizePageRows, Preferences } from "./preferences.js";
 import { Project } from "./project.js";
 import { CommentReply, ReviewComment } from "./reviewComments.js";
 import { FullId } from "./segmentId.js";
@@ -1884,8 +1884,14 @@ export class Swordfish {
                 } else {
                     json.inlineSuggest = normalizeInlineSuggest(json.inlineSuggest);
                 }
-                if (!json.hasOwnProperty('matchThreshold')) {
-                    json.matchThreshold = 60;
+                let matchThreshold: number = normalizeMatchThreshold(json.matchThreshold);
+                if (json.matchThreshold !== matchThreshold) {
+                    json.matchThreshold = matchThreshold;
+                    needsSaving = true;
+                }
+                let pageRows: number = normalizePageRows(json.pageRows);
+                if (json.pageRows !== pageRows) {
+                    json.pageRows = pageRows;
                     needsSaving = true;
                 }
                 if (!Array.isArray(json.selectedMtEngines)) {
@@ -1895,8 +1901,11 @@ export class Swordfish {
                     json.selectedMtEngines = normalizeSelectedEngines(json, json.selectedMtEngines);
                 }
                 Swordfish.currentPreferences = json;
-                if (!Swordfish.currentPreferences.projectsFolder || !existsSync(Swordfish.currentPreferences.projectsFolder) || needsSaving) {
+                if (!Swordfish.currentPreferences.projectsFolder || !existsSync(Swordfish.currentPreferences.projectsFolder)) {
                     Swordfish.currentPreferences.projectsFolder = join(app.getPath('appData'), app.name, 'projects');
+                    needsSaving = true;
+                }
+                if (needsSaving) {
                     writeFileSync(join(app.getPath('appData'), app.name, 'preferences.json'), JSON.stringify(Swordfish.currentPreferences, null, 2));
                 }
                 if (!Swordfish.currentPreferences.memoriesFolder || !existsSync(Swordfish.currentPreferences.memoriesFolder)) {
@@ -1907,15 +1916,15 @@ export class Swordfish {
                     Swordfish.currentPreferences.glossariesFolder = join(app.getPath('appData'), app.name, 'glossaries');
                     writeFileSync(join(app.getPath('appData'), app.name, 'preferences.json'), JSON.stringify(Swordfish.currentPreferences, null, 2));
                 }
-                if (!existsSync(Swordfish.currentPreferences.catalog)) {
+                if (!Swordfish.currentPreferences.catalog || !existsSync(Swordfish.currentPreferences.catalog)) {
                     Swordfish.currentPreferences.catalog = join(app.getAppPath(), 'catalog', 'catalog.xml');
                     writeFileSync(join(app.getPath('appData'), app.name, 'preferences.json'), JSON.stringify(Swordfish.currentPreferences, null, 2));
                 }
-                if (!existsSync(Swordfish.currentPreferences.srx)) {
+                if (!Swordfish.currentPreferences.srx || !existsSync(Swordfish.currentPreferences.srx)) {
                     Swordfish.currentPreferences.srx = join(app.getAppPath(), 'srx', 'default.srx');
                     writeFileSync(join(app.getPath('appData'), app.name, 'preferences.json'), JSON.stringify(Swordfish.currentPreferences, null, 2));
                 }
-                if (!existsSync(Swordfish.currentPreferences.reviewModel)) {
+                if (!Swordfish.currentPreferences.reviewModel || !existsSync(Swordfish.currentPreferences.reviewModel)) {
                     Swordfish.currentPreferences.reviewModel = join(app.getAppPath(), 'review', 'default.json');
                     writeFileSync(join(app.getPath('appData'), app.name, 'preferences.json'), JSON.stringify(Swordfish.currentPreferences, null, 2));
                 }
@@ -2584,22 +2593,19 @@ export class Swordfish {
 
     getLanguages(event: IpcMainEvent): void {
         try {
-            let locale: string = Swordfish.currentPreferences.appLang ? Swordfish.currentPreferences.appLang : 'en';
-            let languages = LanguageUtils.getCommonLanguages(locale);
             let payload = {
-                languages: languages.map((language) => {
-                    return {
-                        code: language.getCode(),
-                        description: language.getDescription(),
-                        suppressedScript: language.getSuppressedScript()
-                    };
-                }),
+                languages: loadCommonLanguages(Swordfish.currentPreferences.appLang),
                 srcLang: Swordfish.currentPreferences.srcLang,
                 tgtLang: Swordfish.currentPreferences.tgtLang
             };
             event.sender.send('set-languages', payload);
         } catch (error) {
             let message: string = error instanceof Error ? error.message : 'Unknown error loading languages';
+            event.sender.send('set-languages', {
+                languages: [],
+                srcLang: Swordfish.currentPreferences.srcLang || 'none',
+                tgtLang: Swordfish.currentPreferences.tgtLang || 'none'
+            });
             Swordfish.showMessage({ type: 'error', message: 'Unable to load languages: ' + message });
         }
     }
@@ -2927,10 +2933,13 @@ export class Swordfish {
 
     static showPreferences(): void {
         this.mainWindow.webContents.send('start-waiting');
+        let workArea: Size = screen.getPrimaryDisplay().workAreaSize;
         this.preferencesWindow = new BrowserWindow({
             parent: this.mainWindow,
-            width: 700,
-            height: 340,
+            width: 720,
+            height: Math.max(480, Math.min(680, Math.round(workArea.height * 0.82))),
+            minWidth: 640,
+            minHeight: 420,
             minimizable: false,
             maximizable: false,
             resizable: true,
@@ -4119,7 +4128,11 @@ export class Swordfish {
     }
 
     static machineTranslate(arg: any): void {
-        let mtManager: MTManager = new MTManager(Swordfish.currentPreferences, arg.srcLang, arg.tgtLang);
+        if (!Swordfish.hasAnyMtEngine(arg.selectedMtEngines)) {
+            Swordfish.showMessage({ type: 'warning', message: t('noMtEngineSelected') });
+            return;
+        }
+        let mtManager: MTManager = new MTManager(Swordfish.currentPreferences, arg.srcLang, arg.tgtLang, arg.selectedMtEngines);
         try {
             mtManager.translateSegment(arg);
         } catch (error: any) {

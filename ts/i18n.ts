@@ -496,7 +496,8 @@ const ZH: Record<string, string> = {
     acceptThisCandidate: '接受',
     noMtEngineSelected: '请至少选择一个已启用的 MT/LLM 引擎。',
     noMtCandidates: '暂无机器翻译候选',
-    mtEnginePicker: '本次调用的引擎'
+    mtEnginePicker: '本次调用的引擎',
+    selectSegment: '请先选择句段'
 };
 
 const EN: Record<string, string> = {
@@ -983,7 +984,8 @@ const EN: Record<string, string> = {
     acceptThisCandidate: 'Accept',
     noMtEngineSelected: 'Select at least one enabled MT/LLM engine.',
     noMtCandidates: 'No machine translation candidates',
-    mtEnginePicker: 'Engines for this request'
+    mtEnginePicker: 'Engines for this request',
+    selectSegment: 'Select a segment'
 };
 
 const CATALOGS: Record<AppLang, Record<string, string>> = { zh: ZH, en: EN };

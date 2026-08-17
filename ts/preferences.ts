@@ -117,3 +117,29 @@ export interface Preferences {
     inlineSuggest: InlineSuggestPreferences;
     selectedMtEngines?: string[];
 }
+
+export function coerceInt(value: unknown, fallback: number, min?: number, max?: number): number {
+    if (value === null || value === undefined || value === '') {
+        return fallback;
+    }
+    let parsed: number = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(parsed)) {
+        return fallback;
+    }
+    parsed = Math.round(parsed);
+    if (min !== undefined && parsed < min) {
+        return min;
+    }
+    if (max !== undefined && parsed > max) {
+        return max;
+    }
+    return parsed;
+}
+
+export function normalizeMatchThreshold(value: unknown): number {
+    return coerceInt(value, 60, 0, 100);
+}
+
+export function normalizePageRows(value: unknown): number {
+    return coerceInt(value, 500, 100, 2000);
+}

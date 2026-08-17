@@ -20,6 +20,38 @@ body {
 	stroke: var(--gray190);
 }
 
+body.preferences-window {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	overflow: hidden;
+}
+
+body.preferences-window #main {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+body.preferences-window #preferencesHolder {
+	flex: 1 1 0;
+	min-height: 0;
+	height: auto !important;
+	overflow: auto;
+}
+
+body.preferences-window #preferencesHolder > div {
+	height: auto !important;
+}
+
+body.preferences-window .tabHolder,
+body.preferences-window > .buttonArea,
+body.preferences-window > .dialog-titlebar {
+	flex: 0 0 auto;
+}
+
 .hdivider {
 	width: 4px;
 	background: transparent;
@@ -396,17 +428,19 @@ th {
 }
 
 .mtEnginePicker {
-	position: absolute;
+	position: fixed;
 	left: 0;
 	bottom: 32px;
 	min-width: 180px;
 	max-height: 240px;
 	overflow: auto;
 	background: var(--gray10);
+	color: var(--gray190);
+	fill: var(--gray190);
 	border: 1px solid var(--gray40);
 	border-radius: 4px;
 	padding: 8px;
-	z-index: 20;
+	z-index: 3000;
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 

@@ -27,7 +27,9 @@ export class MtMatches {
     selectedId: string = '';
     cards: Map<string, HTMLDivElement> = new Map();
     pickerPanel: HTMLDivElement;
+    pickerButton: HTMLAnchorElement;
     emptyLabel: HTMLDivElement;
+    hidePicker: () => void;
 
     constructor(div: HTMLDivElement, projectId: string) {
         this.container = div;
@@ -81,18 +83,18 @@ export class MtMatches {
         pickerWrap.classList.add('mtEnginePickerWrap');
         toolbar.appendChild(pickerWrap);
 
-        let pickerButton = document.createElement('a');
-        pickerButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M3 5h18v2H3V5zm4 6h10v2H7v-2zm3 6h4v2h-4v-2z"/></svg>' +
+        this.pickerButton = document.createElement('a');
+        this.pickerButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M3 5h18v2H3V5zm4 6h10v2H7v-2zm3 6h4v2h-4v-2z"/></svg>' +
             '<span class="tooltiptext bottomTooltip">' + t('mtEnginePicker') + '</span>';
-        pickerButton.className = 'tooltip bottomTooltip';
-        pickerWrap.appendChild(pickerButton);
+        this.pickerButton.className = 'tooltip bottomTooltip';
+        pickerWrap.appendChild(this.pickerButton);
 
         this.pickerPanel = document.createElement('div');
         this.pickerPanel.classList.add('mtEnginePicker');
         this.pickerPanel.classList.add('hidden');
-        pickerWrap.appendChild(this.pickerPanel);
+        document.body.appendChild(this.pickerPanel);
 
-        pickerButton.addEventListener('click', (event: MouseEvent) => {
+        this.pickerButton.addEventListener('click', (event: MouseEvent) => {
             event.stopPropagation();
             this.pickerPanel.classList.toggle('hidden');
             if (!this.pickerPanel.classList.contains('hidden')) {
@@ -102,9 +104,10 @@ export class MtMatches {
         this.pickerPanel.addEventListener('click', (event: MouseEvent) => {
             event.stopPropagation();
         });
-        document.addEventListener('click', () => {
+        this.hidePicker = () => {
             this.pickerPanel.classList.add('hidden');
-        });
+        };
+        document.addEventListener('click', this.hidePicker);
 
         ipcRenderer.on('accept-mt-match', () => {
             this.acceptTranslation();
@@ -124,6 +127,12 @@ export class MtMatches {
             }
         });
         observer.observe(this.container, config);
+    }
+
+    dispose(): void {
+        document.removeEventListener('click', this.hidePicker);
+        this.pickerPanel.classList.add('hidden');
+        this.pickerPanel.remove();
     }
 
     clear(): void {
@@ -233,6 +242,15 @@ export class MtMatches {
         }
     }
 
+    positionEnginePicker(): void {
+        let rect: DOMRect = this.pickerButton.getBoundingClientRect();
+        let width: number = Math.max(180, this.pickerPanel.offsetWidth || 180);
+        let left: number = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+        this.pickerPanel.style.left = left + 'px';
+        this.pickerPanel.style.bottom = Math.max(8, window.innerHeight - rect.top + 4) + 'px';
+        this.pickerPanel.style.top = 'auto';
+    }
+
     renderEnginePicker(): void {
         let selection: { options: MtEngineOption[]; selected: string[] } = ipcRenderer.sendSync('get-mt-engine-selection');
         this.pickerPanel.innerHTML = '';
@@ -240,11 +258,13 @@ export class MtMatches {
         title.classList.add('mtEnginePickerTitle');
         title.innerText = t('selectMtEngines');
         this.pickerPanel.appendChild(title);
+        this.positionEnginePicker();
         let enabled: MtEngineOption[] = (selection?.options || []).filter((option: MtEngineOption) => option.enabled);
         if (enabled.length === 0) {
             let empty: HTMLDivElement = document.createElement('div');
             empty.innerText = t('preTranslateNeedEngine');
             this.pickerPanel.appendChild(empty);
+            this.positionEnginePicker();
             return;
         }
         for (let option of enabled) {
@@ -268,5 +288,6 @@ export class MtMatches {
             row.appendChild(document.createTextNode(option.label));
             this.pickerPanel.appendChild(row);
         }
+        this.positionEnginePicker();
     }
 }

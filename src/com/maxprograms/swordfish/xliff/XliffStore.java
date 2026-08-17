@@ -1654,26 +1654,18 @@ public class XliffStore {
 
 	private static void getPreferences() throws IOException {
 		JSONObject json = TmsServer.getPreferences();
-		acceptUnconfirmed = json.getBoolean("acceptUnconfirmed");
-		caseSensitiveTermSearches = json.getBoolean("caseSensitiveSearches");
-		caseSensitiveMatches = true;
-		if (json.has("caseSensitiveMatches")) {
-			caseSensitiveMatches = json.getBoolean("caseSensitiveMatches");
-		}
-		fuzzyTermSearches = json.getBoolean("fuzzyTermSearches");
-		if (json.has("autoConfirm")) {
-			autoConfirm = json.getBoolean("autoConfirm");
-		} else {
-			autoConfirm = false;
-		}
-		catalog = json.getString("catalog");
-		if (json.has("matchThreshold")) {
-			matchThreshold = json.getInt("matchThreshold");
-		} else {
+		acceptUnconfirmed = json.optBoolean("acceptUnconfirmed", false);
+		caseSensitiveTermSearches = json.optBoolean("caseSensitiveSearches", false);
+		caseSensitiveMatches = json.optBoolean("caseSensitiveMatches", true);
+		fuzzyTermSearches = json.optBoolean("fuzzyTermSearches", false);
+		autoConfirm = json.optBoolean("autoConfirm", false);
+		catalog = json.optString("catalog", "");
+		matchThreshold = TmsServer.optInt(json, "matchThreshold", 60);
+		if (matchThreshold < 0 || matchThreshold > 100) {
 			matchThreshold = 60;
 		}
-		if (json.has("maxThreads")) {
-			maxThreads = json.getInt("maxThreads");
+		if (json.has("maxThreads") && !json.isNull("maxThreads")) {
+			maxThreads = TmsServer.optInt(json, "maxThreads", maxThreads);
 		}
 	}
 

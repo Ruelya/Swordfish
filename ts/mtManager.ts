@@ -11,7 +11,8 @@
  *******************************************************************************/
 
 import { AnthropicTranslator, AzureTranslator, ChatGPTTranslator, DeepLTranslator, GeminiTranslator, GoogleTranslator, MTEngine, MTMatch, MTUtils, MistralTranslator, ModernMTTranslator, OllamaTranslator, QwenTranslator } from "mtengines";
-import { Language, LanguageUtils } from "typesbcp47";
+import { t } from "./i18n.js";
+import { describeLanguageOption, LanguageOption } from "./languageLists.js";
 import { SAXParser, XMLElement } from "typesxml";
 import { MTContentHandler } from "./mtContentHandler.js";
 import { CustomAITranslator, CustomAiConfig } from "./customAITranslator.js";
@@ -652,16 +653,19 @@ export class MTManager {
                         this.recordFailure(engineName, segmentId, result.reason, projectId, failures);
                     }
                 }
-                if (translations.length > 0 || engines.length === 0) {
+                if (engines.length === 0) {
+                    Swordfish.mainWindow.webContents.send('end-waiting');
+                    Swordfish.mainWindow.webContents.send('set-status', '');
+                    Swordfish.showMessage({ type: 'warning', message: t('noMtEngineSelected') });
+                    return;
+                }
+                if (translations.length > 0) {
                     params.translations = translations;
                     params.reload = true;
                     this.setMTMatches(params);
-                    Swordfish.mainWindow.webContents.send('end-waiting');
-                    Swordfish.mainWindow.webContents.send('set-status', '');
-                } else {
-                    Swordfish.mainWindow.webContents.send('end-waiting');
-                    Swordfish.mainWindow.webContents.send('set-status', '');
                 }
+                Swordfish.mainWindow.webContents.send('end-waiting');
+                Swordfish.mainWindow.webContents.send('set-status', '');
                 if (failures.length > 0) {
                     this.notifyFailures(failures, 'There were errors translating the segment');
                 }
@@ -774,19 +778,20 @@ export class MTManager {
 
     }
 
-    getLanguages(langs: string[]): Language[] {
-        let result: Language[] = [];
+    getLanguages(langs: string[]): LanguageOption[] {
+        let appLang: string = Swordfish.currentPreferences?.appLang ?? 'en';
+        let result: LanguageOption[] = [];
         for (let lang of langs) {
             try {
-                let l: Language | undefined = LanguageUtils.getLanguage(lang, 'en');
-                if (l) {
-                    result.push(l);
+                let option: LanguageOption | undefined = describeLanguageOption(lang, appLang);
+                if (option) {
+                    result.push(option);
                 }
-            } catch (error) {
+            } catch (_error) {
                 // ignore unsupported tags
             }
         }
-        result.sort((a: Language, b: Language) => {
+        result.sort((a: LanguageOption, b: LanguageOption) => {
             return a.description.localeCompare(b.description);
         });
         return result;

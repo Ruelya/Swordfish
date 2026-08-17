@@ -191,34 +191,40 @@ public class TmsServer implements HttpHandler {
 
 	public static String getCatalogFile() throws IOException, JSONException {
 		JSONObject json = getPreferences();
-		return json.getString("catalog");
+		return optString(json, "catalog", "");
 	}
 
 	public static File getProjectsFolder() throws IOException, JSONException {
 		JSONObject json = getPreferences();
-		if (!json.has("projectsFolder")) {
-			json.put("projectsFolder", new File(getWorkFolder(), "projects").getAbsolutePath());
+		String folder = optString(json, "projectsFolder", "");
+		if (folder.isEmpty()) {
+			folder = new File(getWorkFolder(), "projects").getAbsolutePath();
+			json.put("projectsFolder", folder);
 			writeJSON(new File(getWorkFolder(), "preferences.json"), json);
 		}
-		return new File(json.getString("projectsFolder"));
+		return new File(folder);
 	}
 
 	public static File getMemoriesFolder() throws IOException, JSONException {
 		JSONObject json = getPreferences();
-		if (!json.has("memoriesFolder")) {
-			json.put("memoriesFolder", new File(getWorkFolder(), "memories").getAbsolutePath());
+		String folder = optString(json, "memoriesFolder", "");
+		if (folder.isEmpty()) {
+			folder = new File(getWorkFolder(), "memories").getAbsolutePath();
+			json.put("memoriesFolder", folder);
 			writeJSON(new File(getWorkFolder(), "preferences.json"), json);
 		}
-		return new File(json.getString("memoriesFolder"));
+		return new File(folder);
 	}
 
 	public static File getGlossariesFolder() throws IOException, JSONException {
 		JSONObject json = getPreferences();
-		if (!json.has("glossariesFolder")) {
-			json.put("glossariesFolder", new File(getWorkFolder(), "glossaries").getAbsolutePath());
+		String folder = optString(json, "glossariesFolder", "");
+		if (folder.isEmpty()) {
+			folder = new File(getWorkFolder(), "glossaries").getAbsolutePath();
+			json.put("glossariesFolder", folder);
 			writeJSON(new File(getWorkFolder(), "preferences.json"), json);
 		}
-		return new File(json.getString("glossariesFolder"));
+		return new File(folder);
 	}
 
 	public static JSONObject getPreferences() throws IOException, JSONException {
@@ -227,6 +233,39 @@ public class TmsServer implements HttpHandler {
 			return new JSONObject();
 		}
 		return readJSON(preferences);
+	}
+
+	public static String optString(JSONObject json, String key, String fallback) {
+		if (json == null || !json.has(key) || json.isNull(key)) {
+			return fallback;
+		}
+		try {
+			String value = json.getString(key);
+			if (value == null || value.isEmpty()) {
+				return fallback;
+			}
+			return value;
+		} catch (Exception e) {
+			return fallback;
+		}
+	}
+
+	public static int optInt(JSONObject json, String key, int fallback) {
+		if (json == null || !json.has(key) || json.isNull(key)) {
+			return fallback;
+		}
+		try {
+			Object value = json.get(key);
+			if (value instanceof Number) {
+				return ((Number) value).intValue();
+			}
+			if (value instanceof String) {
+				return Integer.parseInt(((String) value).trim());
+			}
+		} catch (Exception e) {
+			return fallback;
+		}
+		return fallback;
 	}
 
 	public static JSONObject readJSON(File json) throws IOException, JSONException {
