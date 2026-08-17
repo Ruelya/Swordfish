@@ -1,33 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 
 <head>
-    <title>New Project</title>
+    <title>Translate File</title>
     <link id="theme" rel="stylesheet" type="text/css" href="../../css/light.css">
     <link rel="stylesheet" type="text/css" href="../../css/fonts.css">
 </head>
 
 <body class="dialogBody">
-    <div class="dialog-titlebar"><span>New Project</span></div>
     <div class="paddedArea">
         <table class="fill_width">
             <tr>
-                <td class="middle">
-                    <label for="nameInput">Name</label>
-                </td>
-                <td class="fill_width middle">
-                    <input type="text" id="nameInput" class="table_input">
-                </td>
+                <td class="fill_width"><span id="nameSpan">&nbsp;</span></td>
             </tr>
         </table>
 
-        <table>
+        <table class="fill_width">
             <tr>
-                <td style="width:50%; padding:0;">
-                    <table class="fill_width">
-                        <tr style="height: 2.5em;">
+                <td style="width:50%; padding:0px;">
+                    <table>
+                        <tr>
                             <td class="middle noWrap">
-                                <label for="srcLangSelect">Source Language</label>
+                                <label for="typeSelect">File Type</label>
+                            </td>
+                            <td class="fill_width middle form_height">
+                                <select id="typeSelect" class="fill_width">
+
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="middle noWrap">
+                                <label for="srcLangSelect">源语言</label>
                             </td>
                             <td class="fill_width middle form_height">
                                 <select id="srcLangSelect" class="fill_width">
@@ -35,9 +39,9 @@
                                 </select>
                             </td>
                         </tr>
-                        <tr style="height: 2.5em;">
+                        <tr>
                             <td class="middle noWrap">
-                                <label for="tgtLangSelect">Target Language</label>
+                                <label for="tgtLangSelect">目标语言</label>
                             </td>
                             <td class="fill_width middle form_height">
                                 <select id="tgtLangSelect" class="fill_width">
@@ -47,37 +51,47 @@
                         </tr>
                         <tr>
                             <td class=" noWrap">
-                                <label for="memorySelect">Default Memory</label>
+                                <label for="memorySelect">Default 记忆库</label>
                             </td>
                             <td class="fill_width ">
                                 <select id="memorySelect" class="fill_width">
 
                                 </select>
                                 <input type="checkbox" id="applyTM" class="middle">
-                                <label for="applyTM" class="middle">Apply Translation Memory</label>
+                                <label for="applyTM" class="middle">Apply Translation 记忆库</label>
                             </td>
                         </tr>
                     </table>
                 </td>
-                <td style="width:50%; padding:0;">
-                    <table class="fill_width">
-                        <tr style="height: 2.5em;">
+                <td style="width:50%; padding:0px;">
+                    <table>
+                        <tr>
+                            <td class="middle noWrap">
+                                <label for="charsetSelect">Character Set</label>
+                            </td>
+                            <td class="fill_width middle form_height">
+                                <select id="charsetSelect" class="fill_width">
+
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
                             <td class="middle">
                                 <label for="subjectInput">Subject</label>
                             </td>
-                            <td class="fill_width middle form_height">
-                                <input list="subjects" id="subjectInput" class="table_input middle">
+                            <td class="fill_width middle form_height" style="padding-right: 10px;">
+                                <input list="subjects" id="subjectInput" class="middle fill_width">
                                 <datalist id="subjects">
                                     <option value="none">
                                 </datalist>
                             </td>
                         </tr>
-                        <tr style="height: 2.5em;">
+                        <tr>
                             <td class="middle">
                                 <label for="clientInput">Client</label>
                             </td>
-                            <td class="fill_width middle form_height">
-                                <input list="clients" id="clientInput" class="table_input middle">
+                            <td class="fill_width middle form_height" style="padding-right: 10px;">
+                                <input list="clients" id="clientInput" class="middle fill_width">
                                 <datalist id="clients">
                                     <option value="none">
                                 </datalist>
@@ -85,9 +99,9 @@
                         </tr>
                         <tr>
                             <td class=" noWrap">
-                                <label for="glossarySelect">Default Glossary</label>
+                                <label for="glossarySelect">Default 术语库</label>
                             </td>
-                            <td class="fill_width" style="padding-right: 8px;">
+                            <td class="fill_width">
                                 <select id="glossarySelect" class="fill_width">
 
                                 </select>
@@ -99,31 +113,14 @@
                 </td>
             </tr>
         </table>
-        <div class="bordered divContainer" style="height: 260px; width:calc(100% - 20px); margin-left: 10px;"
-            id="tablePanel">
-            <table class="stripes">
-                <thead>
-                    <tr class="noWrap">
-                        <th style="min-width: 20px;">&nbsp;</th>
-                        <th class="fill_width" style="text-align: left; max-width: 400px;">File Name</th>
-                        <th style="min-width: 200px;">File Type</th>
-                        <th style="min-width: 150px;">Character Set</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    <tr></tr>
-                </tbody>
-            </table>
-        </div>
     </div>
     <div class="buttonArea">
-        <button id="addFilesButton">Add Files</button>
-        <button id="addProjectButton">Create Project</button>
+        <button id="addProjectButton">Translate/Review File</button>
     </div>
 
     <script>
-        const { AddProject } = require('../../js/addProject.js');
-        new AddProject();
+        const { AddFile } = require('../../js/addFile.js');
+        new AddFile();
     </script>
 </body>
 

@@ -11,6 +11,7 @@
  *******************************************************************************/
 
 import { ipcRenderer, IpcRendererEvent } from "electron";
+import { setAppLang, t } from "./i18n.js";
 
 export class ApplyTM {
 
@@ -19,6 +20,20 @@ export class ApplyTM {
     project: string = '';
 
     constructor() {
+        setAppLang(ipcRenderer.sendSync('get-app-lang'));
+        document.title = t('applyTmTitle');
+        let memoryLabel: HTMLElement | null = document.querySelector('label[for="memorySelect"]');
+        if (memoryLabel) {
+            memoryLabel.innerText = t('memory');
+        }
+        let penaltyLabel: HTMLElement | null = document.querySelector('label[for="penalty"]');
+        if (penaltyLabel) {
+            penaltyLabel.innerText = t('penalization');
+        }
+        let applyButton: HTMLElement | null = document.getElementById('applyTmButton');
+        if (applyButton) {
+            applyButton.innerText = t('applyTmAll');
+        }
         this.memSelect = document.getElementById('memorySelect') as HTMLSelectElement;
         this.penalty = document.getElementById('penalty') as HTMLInputElement;
         this.penalty.value = '0';
@@ -64,7 +79,7 @@ export class ApplyTM {
     applyTM(): void {
         let mem: string = this.memSelect.value;
         if (mem === 'none') {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Select memory', parent: 'applyTm' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectMemory'), parent: 'applyTm' });
             return;
         }
         if (this.penalty.value.length === 0) {
@@ -72,7 +87,7 @@ export class ApplyTM {
         }
         let penalization: number = Number.parseInt(this.penalty.value);
         if (penalization > 59) {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Penalization must be less than 60%', parent: 'applyTm' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('penalizationLimit'), parent: 'applyTm' });
             return;
         }
         let params: any = {
@@ -85,10 +100,10 @@ export class ApplyTM {
 
     setMemories(memories: any[]): void {
         if (memories.length === 0) {
-            this.memSelect.innerHTML = '<option value="none" class="error">-- No Memory --</option>';
+            this.memSelect.innerHTML = '<option value="none" class="error">' + t('noMemory') + '</option>';
             return;
         }
-        let options = '<option value="none" class="error">-- Select Memory --</option>';
+        let options = '<option value="none" class="error">' + t('selectMemoryOption') + '</option>';
         let length = memories.length;
         for (let i = 0; i < length; i++) {
             options = options + '<option value="' + memories[i].id + '">' + memories[i].name + '</option>';

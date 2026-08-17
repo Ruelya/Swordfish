@@ -717,19 +717,38 @@ th svg {
 	overflow-y: scroll;
 }
 
-.titlepanel {
+.titlepanel,
+.dialog-titlebar,
+.view-titlebar {
 	margin: 0;
 	padding-top: 0px;
-	padding-left: 4px;
-	padding-right: 4px;
+	padding-left: 8px;
+	padding-right: 8px;
 	border-radius: 4px 4px 0px 0px;
 	background: var(--ClassicBlue90);
 	color: var(--white);
 	white-space: nowrap;
 	overflow: hidden;
-	height: 26px;
+	min-height: 32px;
+	height: 32px;
+	line-height: 32px;
 	vertical-align: middle;
 	text-align: center;
+	box-sizing: border-box;
+}
+
+.dialog-titlebar {
+	border-radius: 0;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	font-weight: 600;
+}
+
+.view-titlebar {
+	border-radius: 0;
+	text-align: left;
+	font-weight: 600;
 }
 
 .titlepanel a svg {
@@ -1177,4 +1196,132 @@ svg.stats {
 .required {
 	color: var(--error-color);
 	margin-left: 2px;
+}
+
+.lifecycle-layout {
+	display: flex;
+	flex-direction: row;
+	height: calc(100vh - 88px);
+	gap: 12px;
+	padding: 12px;
+	box-sizing: border-box;
+}
+
+.lifecycle-steps {
+	width: 280px;
+	overflow-y: auto;
+}
+
+.lifecycle-step {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 10px 8px;
+	border-left: 3px solid var(--gray50);
+	margin-bottom: 4px;
+}
+
+.lifecycle-step.running {
+	border-left-color: var(--ClassicBlue50);
+}
+
+.lifecycle-step.done {
+	border-left-color: var(--teal);
+}
+
+.lifecycle-step.failed {
+	border-left-color: var(--error-color);
+}
+
+.lifecycle-step-index {
+	min-width: 22px;
+	height: 22px;
+	border-radius: 11px;
+	background: var(--ClassicBlue90);
+	color: var(--white);
+	text-align: center;
+	line-height: 22px;
+	font-size: 12px;
+}
+
+.lifecycle-main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.lifecycle-log {
+	flex: 1;
+	min-height: 180px;
+	overflow: auto;
+	border: 1px solid var(--white);
+	border-radius: 4px;
+	padding: 8px;
+	font-family: 'Courier New', Courier, monospace;
+	font-size: 12px;
+	white-space: pre-wrap;
+}
+
+.hint {
+	font-size: 0.9em;
+	margin: 4px 0 8px 0;
+}
+
+.app-titlebar {
+	position: relative;
+	top: env(titlebar-area-y, 0px);
+	left: env(titlebar-area-x, 0px);
+	width: env(titlebar-area-width, 100%);
+	height: env(titlebar-area-height, 36px);
+	display: flex;
+	align-items: center;
+	background: var(--ClassicBlue90);
+	color: var(--white);
+	z-index: 2000;
+	-webkit-app-region: drag;
+	user-select: none;
+	box-sizing: border-box;
+	padding: 0 8px;
+	flex-shrink: 0;
+}
+
+.app-titlebar-icon {
+	width: 16px;
+	height: 16px;
+	margin-right: 8px;
+	flex: 0 0 16px;
+}
+
+.app-titlebar-name {
+	font-size: 13px;
+	margin-right: 12px;
+	white-space: nowrap;
+}
+
+.app-titlebar-menu {
+	display: flex;
+	align-items: stretch;
+	height: 100%;
+	-webkit-app-region: no-drag;
+}
+
+.app-titlebar-item {
+	border: none;
+	background: transparent;
+	color: var(--white);
+	height: 100%;
+	padding: 0 10px;
+	font-size: 13px;
+	cursor: default;
+}
+
+.app-titlebar-item:hover,
+.app-titlebar-item.open {
+	background: var(--ClassicBlue50);
+}
+
+.app-titlebar-drag {
+	flex: 1 1 auto;
+	height: 100%;
 }

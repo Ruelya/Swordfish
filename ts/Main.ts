@@ -12,6 +12,7 @@
 
 import { ipcRenderer, IpcRendererEvent } from "electron";
 import { GlossariesView } from "./glossaries.js";
+import { setAppLang, t } from "./i18n.js";
 import { MemoriesView } from "./memories.js";
 import { MetaId } from "./metadata.js";
 import { Project } from "./project.js";
@@ -19,6 +20,7 @@ import { ProjectsView } from "./projects.js";
 import { Match } from "./match.js";
 import { FullId } from "./segmentId.js";
 import { Tab, TabHolder } from "./tabs.js";
+import { TitleBar } from "./titleBar.js";
 import { TranslationView } from "./translation.js";
 
 export class Main {
@@ -36,27 +38,29 @@ export class Main {
     static rowsPage: number;
 
     constructor() {
+        setAppLang(ipcRenderer.sendSync('get-app-lang'));
+        new TitleBar();
         Main.translationViews = new Map<string, TranslationView>();
         Main.mainContainer = document.getElementById('mainContainer') as HTMLDivElement;
         Main.tabHolder = new TabHolder(Main.mainContainer, 'main');
 
         Main.main = document.getElementById('main') as HTMLDivElement;
 
-        let projectsTab: Tab = new Tab('projects', 'Projects', false, Main.tabHolder);
+        let projectsTab: Tab = new Tab('projects', t('projects'), false, Main.tabHolder);
         this.projectsView = new ProjectsView(projectsTab.getContainer());
         projectsTab.getLabelDiv().addEventListener('click', () => {
             this.projectsView.setSizes();
         });
         Main.tabHolder.addTab(projectsTab);
 
-        let memoriesTab: Tab = new Tab('memories', 'Memories', false, Main.tabHolder);
+        let memoriesTab: Tab = new Tab('memories', t('memories'), false, Main.tabHolder);
         this.memoriesView = new MemoriesView(memoriesTab.getContainer());
         memoriesTab.getLabelDiv().addEventListener('click', () => {
             this.memoriesView.setSizes();
         });
         Main.tabHolder.addTab(memoriesTab);
 
-        let glossariesTab: Tab = new Tab('glossaries', 'Glossaries', false, Main.tabHolder);
+        let glossariesTab: Tab = new Tab('glossaries', t('glossaries'), false, Main.tabHolder);
         this.glossariesView = new GlossariesView(glossariesTab.getContainer());
         glossariesTab.getLabelDiv().addEventListener('click', () => {
             this.glossariesView.setSizes();
@@ -333,6 +337,9 @@ export class Main {
         });
         ipcRenderer.on('apply-tm-all', () => {
             this.applyTranslationMemoryAll();
+        });
+        ipcRenderer.on('request-ai-pretranslate', () => {
+            this.requestAiPreTranslate();
         });
         ipcRenderer.on('accept-all-matches', () => {
             this.acceptAll100Matches();
@@ -627,7 +634,7 @@ export class Main {
 
     static resizePanels(): void {
         Main.mainContainer.style.width = document.body.clientWidth + 'px';
-        Main.mainContainer.style.height = document.body.clientHeight + 'px';
+        Main.mainContainer.style.height = (document.body.clientHeight - TitleBar.reservedHeight()) + 'px';
     }
 
     static checkTabs(): void {
@@ -908,6 +915,25 @@ export class Main {
         if (Main.translationViews.has(selected)) {
             (Main.translationViews.get(selected) as TranslationView).applyTranslationMemoryAll();
         }
+    }
+
+    requestAiPreTranslate(): void {
+        let selected: string = Main.tabHolder.getSelected();
+        if (Main.translationViews.has(selected)) {
+            let view: TranslationView = Main.translationViews.get(selected) as TranslationView;
+            ipcRenderer.send('open-ai-pretranslate', {
+                project: view.projectId,
+                srcLang: view.srcLang,
+                tgtLang: view.tgtLang,
+                memory: view.memSelect ? view.memSelect.value : 'none'
+            });
+            return;
+        }
+        if (selected === 'projects') {
+            this.projectsView.requestAiPreTranslate();
+            return;
+        }
+        ipcRenderer.send('show-message', { type: 'warning', message: t('preTranslateNeedProject') });
     }
 
     acceptAll100Matches(): void {

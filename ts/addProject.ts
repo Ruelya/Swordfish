@@ -13,6 +13,7 @@
 import { ipcRenderer, IpcRendererEvent } from "electron";
 import { Language } from "typesbcp47";
 import { FileInfo } from "./fileInfo.js";
+import { setAppLang, t } from "./i18n.js";
 
 export class AddProject {
 
@@ -27,6 +28,45 @@ export class AddProject {
     homeFolder: string = '';
 
     constructor() {
+        setAppLang(ipcRenderer.sendSync('get-app-lang'));
+        document.title = t('newProject');
+        let titleMap: Array<[string, string]> = [
+            ['nameInput', 'name'],
+            ['srcLangSelect', 'sourceLanguage'],
+            ['tgtLangSelect', 'targetLanguage'],
+            ['memorySelect', 'defaultMemory'],
+            ['glossarySelect', 'defaultGlossary']
+        ];
+        for (let [id, key] of titleMap) {
+            let label: HTMLElement | null = document.querySelector('label[for="' + id + '"]');
+            if (label) {
+                label.innerText = t(key);
+            }
+        }
+        let applyTmLabel: HTMLElement | null = document.querySelector('label[for="applyTM"]');
+        if (applyTmLabel) {
+            applyTmLabel.innerText = t('applyTranslationMemory');
+        }
+        let searchTermsLabel: HTMLElement | null = document.querySelector('label[for="searchTerms"]');
+        if (searchTermsLabel) {
+            searchTermsLabel.innerText = t('searchTerms');
+        }
+        let createButton: HTMLElement | null = document.getElementById('addProjectButton');
+        if (createButton) {
+            createButton.innerText = t('createProject');
+        }
+        let addFilesButton: HTMLElement | null = document.getElementById('addFilesButton');
+        if (addFilesButton) {
+            addFilesButton.innerText = t('addFilesBtn');
+        }
+        let subjectLabel: HTMLElement | null = document.querySelector('label[for="subjectInput"]');
+        if (subjectLabel) {
+            subjectLabel.innerText = t('subject');
+        }
+        let clientLabel: HTMLElement | null = document.querySelector('label[for="clientInput"]');
+        if (clientLabel) {
+            clientLabel.innerText = t('client');
+        }
         this.memSelect = document.getElementById('memorySelect') as HTMLSelectElement;
         this.glossSelect = document.getElementById('glossarySelect') as HTMLSelectElement;
 
@@ -120,24 +160,24 @@ export class AddProject {
         let client: string = (document.getElementById('clientInput') as HTMLInputElement).value;
         let srcLang: string = (document.getElementById('srcLangSelect') as HTMLSelectElement).value;
         if (srcLang === 'none') {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Select source language', parent: 'addProject' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectSourceLanguage'), parent: 'addProject' });
             return;
         }
         let tgtLang: string = (document.getElementById('tgtLangSelect') as HTMLSelectElement).value;
         if (tgtLang === 'none') {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Select target language', parent: 'addProject' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectTargetLanguage'), parent: 'addProject' });
             return;
         }
         let memory: string = this.memSelect.value;
         let applyTM: boolean = (document.getElementById('applyTM') as HTMLInputElement).checked;
         if (applyTM && memory === 'none') {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Select memory', parent: 'addProject' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectMemory'), parent: 'addProject' });
             return;
         }
         let glossary: string = this.glossSelect.value;
         let searchTerms: boolean = (document.getElementById('searchTerms') as HTMLInputElement).checked;
         if (searchTerms && glossary === 'none') {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Select glossary', parent: 'addProject' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectGlossary'), parent: 'addProject' });
             return;
         }
 
@@ -181,7 +221,7 @@ export class AddProject {
 
     setLanguages(arg: any): void {
         let array: Language[] = arg.languages;
-        let languageOptions: string = '<option value="none">Select Language</option>';
+        let languageOptions: string = '<option value="none">' + t('selectLanguage') + '</option>';
         for (let lang of array) {
             languageOptions = languageOptions + '<option value="' + lang.code + '">' + lang.description + '</option>';
         }

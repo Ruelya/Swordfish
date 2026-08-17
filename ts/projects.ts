@@ -11,6 +11,7 @@
  *******************************************************************************/
 
 import { ipcRenderer, IpcRendererEvent, webUtils } from "electron";
+import { t } from "./i18n.js";
 import { Main } from "./Main.js";
 import { Project } from "./project.js";
 
@@ -36,7 +37,7 @@ export class ProjectsView {
 
         let addFileButton = document.createElement('a');
         addFileButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="m 21,16.166667 h -2.454545 v -2.5 h -1.636364 v 2.5 h -2.454546 v 1.666666 h 2.454546 v 2.5 h 1.636364 v -2.5 H 21 Z m -5.727273,4.166666 V 22 H 3 V 2 h 8.336455 c 2.587909,0 8.027181,6.0191667 8.027181,8.011667 V 12 h -1.636363 v -1.285833 c 0,-3.4225003 -4.909091,-2.0475003 -4.909091,-2.0475003 0,0 1.242,-5 -2.158364,-5 H 4.6363636 V 20.333333 Z" /></svg>' +
-            '<span class="tooltiptext bottomTooltip">Translate/Review Single File</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('translateSingleFile') + '</span>';
         addFileButton.className = 'tooltip bottomTooltip';
         addFileButton.addEventListener('click', () => {
             this.addFile();
@@ -45,7 +46,7 @@ export class ProjectsView {
 
         let addProjectButton = document.createElement('a');
         addProjectButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm0 12H4V6h5.17l2 2H20v10zm-8-4h2v2h2v-2h2v-2h-2v-2h-2v2h-2z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Add Project</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('addProject') + '</span>';
         addProjectButton.className = 'tooltip bottomTooltip';
         addProjectButton.addEventListener('click', () => {
             this.addProject();
@@ -54,7 +55,7 @@ export class ProjectsView {
 
         let editProjectButton = document.createElement('a');
         editProjectButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" ><path d="M200-200h57l391-391-57-57-391 391v57Zm-80 80v-170l528-527q12-11 26.5-17t30.5-6q16 0 31 6t26 18l55 56q12 11 17.5 26t5.5 30q0 16-5.5 30.5T817-647L290-120H120Zm640-584-56-56 56 56Zm-141 85-28-29 57 57-29-28Z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Edit Project</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('editProject') + '</span>';
         editProjectButton.className = 'tooltip bottomTooltip';
         editProjectButton.addEventListener('click', () => {
             this.editProject();
@@ -63,7 +64,7 @@ export class ProjectsView {
 
         let translateButton = document.createElement('a');
         translateButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Translate/Review Project</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('translateReviewProject') + '</span>';
         translateButton.className = 'tooltip bottomTooltip';
         translateButton.addEventListener('click', () => {
             this.openProjects();
@@ -73,7 +74,7 @@ export class ProjectsView {
 
         let exportTranslations = document.createElement('a');
         exportTranslations.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Export Translations/Reviews</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('exportTranslationsReviews') + '</span>';
         exportTranslations.className = 'tooltip bottomTooltip';
         exportTranslations.addEventListener('click', () => {
             this.exportTranslations();
@@ -82,7 +83,7 @@ export class ProjectsView {
 
         let statisticsButton = document.createElement('a');
         statisticsButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4zm2.5 2.1h-15V5h15v14.1zm0-16.1h-15c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Project Statistics</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('projectStatistics') + '</span>';
         statisticsButton.className = 'tooltip bottomTooltip';
         statisticsButton.style.marginLeft = '10px';
         statisticsButton.addEventListener('click', () => {
@@ -92,7 +93,7 @@ export class ProjectsView {
 
         let htmlExportButton = document.createElement('a');
         htmlExportButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24"><path d="M19,3H5C3.89,3,3,3.9,3,5v14c0,1.1,0.89,2,2,2h14c1.1,0,2-0.9,2-2V5C21,3.9,20.11,3,19,3z M19,19H5V7h14V19z M17,12H7v-2 h10V12z M13,16H7v-2h6V16z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Export HTML</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('exportHtml') + '</span>';
         htmlExportButton.className = 'tooltip bottomTooltip';
         htmlExportButton.addEventListener('click', () => {
             this.exportHTML();
@@ -101,7 +102,7 @@ export class ProjectsView {
 
         let exportXliffButton = document.createElement('a');
         exportXliffButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24"><g><path d="M19,12v7H5v-7H3v7c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2v-7H19z"/><polygon points="14.1,4.9 14.1,3 21,3 21,9.9 19.1,9.9 19.1,6.3 9.4,16 8,14.4 17.7,4.9 "/></g></svg>' +
-            '<span class="tooltiptext bottomTooltip">Export XLIFF File for Review</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('exportXliffReview') + '</span>';
         exportXliffButton.className = 'tooltip bottomTooltip';
         exportXliffButton.addEventListener('click', () => {
             this.exportXLIFF();
@@ -111,7 +112,7 @@ export class ProjectsView {
 
         let importXliffButton = document.createElement('a');
         importXliffButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24"><g><path d="M19,12v7H5v-7H3v7c0,1.1,0.9,2,2,2h14c1.1,0,2-0.9,2-2v-7H19z"/><polygon points="9,14.1 9,16 15.9,16 15.9,9.1 14,9.1 14,12.7 4.3,3 3,4.6 12.6,14.1 "/></g></svg>' +
-            '<span class="tooltiptext bottomTooltip">Import Reviewed XLIFF File</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('importReviewedXliff') + '</span>';
         importXliffButton.className = 'tooltip bottomTooltip';
         importXliffButton.addEventListener('click', () => {
             ipcRenderer.send('import-xliff-review');
@@ -120,7 +121,7 @@ export class ProjectsView {
 
         let removeButton = document.createElement('a');
         removeButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px"><path d="m376-300 104-104 104 104 56-56-104-104 104-104-56-56-104 104-104-104-56 56 104 104-104 104 56 56Zm-96 180q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520Zm-400 0v520-520Z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Remove Project</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('removeProject') + '</span>';
         removeButton.className = 'tooltip bottomTooltip';
         removeButton.addEventListener('click', () => {
             this.removeProjects();
@@ -130,7 +131,7 @@ export class ProjectsView {
 
         let importButton = document.createElement('a');
         importButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24"><path d="M19,9h-2v6.59L5.41,4L4,5.41L15.59,17H9v2h10V9z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Import Project</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('importProject') + '</span>';
         importButton.className = 'tooltip bottomTooltip';
         importButton.addEventListener('click', () => {
             ipcRenderer.send('import-xliff');
@@ -140,7 +141,7 @@ export class ProjectsView {
 
         let exportButton = document.createElement('a');
         exportButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 24 24" height="24" viewBox="0 0 24 24" width="24"><path d="M9,5v2h6.59L4,18.59L5.41,20L17,8.41V15h2V5H9z"/></svg>' +
-            '<span class="tooltiptext bottomTooltip">Export Project</span>';
+            '<span class="tooltiptext bottomTooltip">' + t('exportProject') + '</span>';
         exportButton.className = 'tooltip bottomTooltip';
         exportButton.addEventListener('click', () => {
             this.exportProject();
@@ -172,7 +173,7 @@ export class ProjectsView {
 
         th = document.createElement('th');
         th.classList.add('noWrap');
-        th.innerHTML = 'Name';
+        th.innerHTML = t('name');
         th.id = 'project-name';
         th.addEventListener('click', () => {
             (document.getElementById('project-' + this.projectSortFielD) as HTMLTableCellElement).classList.remove('arrow-down');
@@ -189,7 +190,7 @@ export class ProjectsView {
 
         th = document.createElement('th');
         th.classList.add('noWrap');
-        th.innerHTML = 'Status';
+        th.innerHTML = t('status');
         th.id = 'project-status';
         th.addEventListener('click', () => {
             (document.getElementById('project-' + this.projectSortFielD) as HTMLTableCellElement).classList.remove('arrow-down');
@@ -206,7 +207,7 @@ export class ProjectsView {
 
         th = document.createElement('th');
         th.classList.add('noWrap');
-        th.innerHTML = 'Type';
+        th.innerHTML = t('type');
         th.id = 'project-type';
         th.addEventListener('click', () => {
             (document.getElementById('project-' + this.projectSortFielD) as HTMLTableCellElement).classList.remove('arrow-down');
@@ -223,7 +224,7 @@ export class ProjectsView {
 
         th = document.createElement('th');
         th.classList.add('noWrap');
-        th.innerHTML = 'Src.Lang.';
+        th.innerHTML = t('srcLangShort');
         th.id = 'project-srcLang';
         th.addEventListener('click', () => {
             (document.getElementById('project-' + this.projectSortFielD) as HTMLTableCellElement).classList.remove('arrow-down');
@@ -242,7 +243,7 @@ export class ProjectsView {
 
         th = document.createElement('th');
         th.classList.add('noWrap');
-        th.innerHTML = 'Tgt.Lang.';
+        th.innerHTML = t('tgtLangShort');
         th.id = 'project-tgtLang';
         th.addEventListener('click', () => {
             (document.getElementById('project-' + this.projectSortFielD) as HTMLTableCellElement).classList.remove('arrow-down');
@@ -261,7 +262,7 @@ export class ProjectsView {
 
         th = document.createElement('th');
         th.classList.add('noWrap');
-        th.innerHTML = 'Created';
+        th.innerHTML = t('created');
         th.id = 'project-created';
         th.addEventListener('click', () => {
             (document.getElementById('project-' + this.projectSortFielD) as HTMLTableCellElement).classList.remove('arrow-down');
@@ -280,7 +281,7 @@ export class ProjectsView {
         headerRow.appendChild(th);
 
         th = document.createElement('th');
-        th.innerHTML = 'Client';
+        th.innerHTML = t('client');
         th.id = 'project-client';
         th.addEventListener('click', () => {
             (document.getElementById('project-' + this.projectSortFielD) as HTMLTableCellElement).classList.remove('arrow-down');
@@ -298,7 +299,7 @@ export class ProjectsView {
         headerRow.appendChild(th);
 
         th = document.createElement('th');
-        th.innerHTML = 'Subject';
+        th.innerHTML = t('subject');
         th.id = 'project-subject';
         th.addEventListener('click', () => {
             (document.getElementById('project-' + this.projectSortFielD) as HTMLTableCellElement).classList.remove('arrow-down');
@@ -328,7 +329,7 @@ export class ProjectsView {
         ipcRenderer.on('set-projects-svg', (event: IpcRendererEvent, svg: string) => {
             let emptyProjects = document.getElementById('emptyProjects') as HTMLTableCellElement;
             if (emptyProjects) {
-                emptyProjects.innerHTML = svg + '<p>No Projects Yet</p';
+                emptyProjects.innerHTML = svg + '<p>' + t('emptyProjects') + '</p';
             }
         });
 
@@ -904,17 +905,40 @@ export class ProjectsView {
     applyTranslationMemoryAll(): void {
         let selected = this.getSelectedProjects();
         if (selected.size === 0) {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Select project' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectProject') });
             return;
         }
         if (selected.size > 1) {
-            ipcRenderer.send('show-message', { type: 'warning', message: 'Select one project' });
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectOneProject') });
             return;
         }
         for (let key of selected.keys()) {
             let project: Project | undefined = selected.get(key);
             if (project) {
                 ipcRenderer.send('show-apply-tm', { project: key, memory: project.memory });
+            }
+        }
+    }
+
+    requestAiPreTranslate(): void {
+        let selected = this.getSelectedProjects();
+        if (selected.size === 0) {
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectProject') });
+            return;
+        }
+        if (selected.size > 1) {
+            ipcRenderer.send('show-message', { type: 'warning', message: t('selectOneProject') });
+            return;
+        }
+        for (let key of selected.keys()) {
+            let project: Project | undefined = selected.get(key);
+            if (project) {
+                ipcRenderer.send('open-ai-pretranslate', {
+                    project: key,
+                    srcLang: project.sourceLang,
+                    tgtLang: project.targetLang,
+                    memory: project.memory
+                });
             }
         }
     }
